@@ -20,6 +20,7 @@ const hospitalRoutes = require('./routes/hospital.routes');
 const userRoutes = require('./routes/user.routes');
 const aiRoutes = require('./routes/ai.routes');
 const blockchainRoutes = require('./routes/blockchain.routes');
+const blockchainService = require('./config/blockchain');
 
 // Import socket handler
 const socketHandler = require('./socket/socketHandler');
@@ -57,6 +58,15 @@ app.use(express.urlencoded({ extended: true }));
 
 // Database connection and server start
 connectDB().then(async () => {
+  // Initialize blockchain integration only when configured/enabled.
+  const shouldInitializeBlockchain = process.env.ENABLE_BLOCKCHAIN === 'true';
+
+  if (shouldInitializeBlockchain) {
+    await blockchainService.initialize();
+  } else {
+    console.log('ℹ️ Blockchain integration disabled (set ENABLE_BLOCKCHAIN=true to enable)');
+  }
+
   // Seed default admin
   await require('./utils/seedAdmin')();
   // Seed sample data (hospitals, beds, blood units)

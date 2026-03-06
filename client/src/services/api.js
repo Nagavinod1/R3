@@ -43,7 +43,7 @@ export const authAPI = {
   getMe: () => api.get('/auth/me'),
   updateProfile: (data) => api.put('/auth/profile', data),
   updatePassword: (data) => api.put('/auth/password', data),
-  changePassword: (data) => api.put('/auth/change-password', data),
+  changePassword: (data) => api.put('/auth/password', data),
   getNotifications: () => api.get('/auth/notifications'),
   markNotificationsRead: () => api.put('/auth/notifications/read')
 };
@@ -67,7 +67,8 @@ export const adminAPI = {
   resolveAlert: (id, data = {}) => api.put(`/admin/alerts/${id}/resolve`, data),
   getBloodAnalytics: () => api.get('/admin/analytics/blood'),
   getHospitalAnalytics: () => api.get('/admin/analytics/hospitals'),
-  getBedBookings: (params) => api.get('/beds/bookings', { params })
+  getBedBookings: (params) => api.get('/admin/bed-bookings', { params }),
+  getBloodRequests: (params) => api.get('/admin/blood-requests', { params })
 };
 
 // Blood API
@@ -135,7 +136,7 @@ export const userAPI = {
 // Auth API extended
 export const authAPIExtended = {
   ...authAPI,
-  changePassword: (data) => api.put('/auth/change-password', data)
+  changePassword: (data) => api.put('/auth/password', data)
 };
 
 // AI API

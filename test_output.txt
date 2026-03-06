@@ -1,0 +1,134 @@
+﻿{
+  &quot;component&quot;: {
+    &quot;component&quot;: &quot;Card&quot;,
+    &quot;props&quot;: {
+      &quot;children&quot;: [
+        {
+          &quot;component&quot;: &quot;Header&quot;,
+          &quot;props&quot;: {
+            &quot;title&quot;: &quot;Understanding Fever&quot;,
+            &quot;subtitle&quot;: &quot;Guidance on body temperature and care&quot;
+          }
+        },
+        {
+          &quot;component&quot;: &quot;TextContent&quot;,
+          &quot;props&quot;: {
+            &quot;textMarkdown&quot;: &quot;A fever (pyrexia) is a temporary increase in your body temperature, often due to an illness. It is a sign that your body&#39;s immune system is fighting off an infection. While uncomfortable, a fever is usually a protective response.\n\n**Standard Body Temperature:** Approximately **98.6°F (37°C)**. A fever is typically defined as a temperature of **100.4°F (38°C)** or higher.&quot;
+          }
+        },
+        {
+          &quot;component&quot;: &quot;MiniCardBlock&quot;,
+          &quot;props&quot;: {
+            &quot;children&quot;: [
+              {
+                &quot;component&quot;: &quot;MiniCard&quot;,
+                &quot;props&quot;: {
+                  &quot;lhs&quot;: {
+                    &quot;component&quot;: &quot;DataTile&quot;,
+                    &quot;props&quot;: {
+                      &quot;amount&quot;: &quot;100.4°F&quot;,
+                      &quot;description&quot;: &quot;Fever Threshold&quot;,
+                      &quot;child&quot;: {
+                        &quot;component&quot;: &quot;Icon&quot;,
+                        &quot;props&quot;: {
+                          &quot;name&quot;: &quot;thermometer&quot;,
+                          &quot;category&quot;: &quot;medical&quot;
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                &quot;component&quot;: &quot;MiniCard&quot;,
+                &quot;props&quot;: {
+                  &quot;lhs&quot;: {
+                    &quot;component&quot;: &quot;DataTile&quot;,
+                    &quot;props&quot;: {
+                      &quot;amount&quot;: &quot;103°F+&quot;,
+                      &quot;description&quot;: &quot;High Grade Fever&quot;,
+                      &quot;child&quot;: {
+                        &quot;component&quot;: &quot;Tag&quot;,
+                        &quot;props&quot;: {
+                          &quot;text&quot;: &quot;Severe&quot;,
+                          &quot;variant&quot;: &quot;danger&quot;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          &quot;component&quot;: &quot;SectionBlock&quot;,
+          &quot;props&quot;: {
+            &quot;isFoldable&quot;: false,
+            &quot;sections&quot;: [
+              {
+                &quot;value&quot;: &quot;management&quot;,
+                &quot;trigger&quot;: &quot;Care &amp; Management&quot;,
+                &quot;content&quot;: [
+                  {
+                    &quot;component&quot;: &quot;InlineHeader&quot;,
+                    &quot;props&quot;: {
+                      &quot;heading&quot;: &quot;Home Care Steps&quot;,
+                      &quot;description&quot;: &quot;How to manage a mild to moderate fever&quot;
+                    }
+                  },
+                  {
+                    &quot;component&quot;: &quot;List&quot;,
+                    &quot;props&quot;: {
+                      &quot;variant&quot;: &quot;icon&quot;,
+                      &quot;items&quot;: [
+                        {
+                          &quot;title&quot;: &quot;Hydration&quot;,
+                          &quot;subtitle&quot;: &quot;Drink plenty of fluids (water, juice, broth) to prevent dehydration.&quot;,
+                          &quot;iconName&quot;: &quot;droplets&quot;,
+                          &quot;iconCategory&quot;: &quot;food-beverage&quot;
+                        },
+                        {
+                          &quot;title&quot;: &quot;Rest&quot;,
+                          &quot;subtitle&quot;: &quot;Allow your body to recover by getting ample sleep.&quot;,
+                          &quot;iconName&quot;: &quot;bed&quot;,
+                          &quot;iconCategory&quot;: &quot;home&quot;
+                        },
+                        {
+                          &quot;title&quot;: &quot;Medication&quot;,
+                          &quot;subtitle&quot;: &quot;Paracetamol (500-1000mg) every 6 hours can help reduce temperature.&quot;,
+                          &quot;iconName&quot;: &quot;pill&quot;,
+                          &quot;iconCategory&quot;: &quot;medical&quot;
+                        },
+                        {
+                          &quot;title&quot;: &quot;Cooling&quot;,
+                          &quot;subtitle&quot;: &quot;Use a cool compress on the forehead and wear light clothing.&quot;,
+                          &quot;iconName&quot;: &quot;wind&quot;,
+                          &quot;iconCategory&quot;: &quot;weather&quot;
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                &quot;value&quot;: &quot;emergency&quot;,
+                &quot;trigger&quot;: &quot;When to Seek Help&quot;,
+                &quot;content&quot;: [
+                  {
+                    &quot;component&quot;: &quot;CalloutV2&quot;,
+                    &quot;props&quot;: {
+                      &quot;variant&quot;: &quot;danger&quot;,
+                      &quot;title&quot;: &quot;Emergency Warning Signs&quot;,
+                      &quot;description&quot;: &quot;Seek immediate medical attention if a fever is accompanied by a stiff neck, confusion, seizure, difficulty breathing, or if the temperature exceeds 103°F (39.4°C).&quot;
+                    }
+                  },
+                  {
+                    &quot;component&quot;: &quot;ButtonGroup&quot;,
+                    &quot;props&quot;: {
+                      &quot;variant&quot;: &quot;horizontal&quot;,
+                      &quot;children&quot;: [
+                        {
+                          &quot;component&quot;: &quot;Button&quot;,
+                          &quot;props&quot;: {
+                            &quot;children&quot;: &quot;Call Ambulance (10

@@ -119,12 +119,16 @@ const StaffDashboard = () => {
       }
       setBloodStats(bloodData);
 
-      const lowStock = bloodData.filter(b => b.count < 15);
-      const totalUnits = bloodData.reduce((sum, b) => sum + (b.count || 0), 0);
+      const lowStock = bloodData.filter(b => (b.count || b.units || 0) < 15);
+      const totalUnits = bloodData.reduce((sum, b) => sum + (b.count || b.units || 0), 0);
+
+      // Count actual available beds from grouped hospital data
+      const bedsData = Array.isArray(bedsRes.data?.data) ? bedsRes.data.data : [];
+      const totalAvailableBeds = bedsRes.data?.totalAvailable || bedsData.reduce((sum, group) => sum + (group.availableCount || 0), 0);
 
       setStats({
         totalBloodUnits: totalUnits,
-        availableBeds: Array.isArray(bedsRes.data?.data) ? bedsRes.data.data.length : 0,
+        availableBeds: totalAvailableBeds,
         pendingRequests: Array.isArray(requestsRes.data?.data) 
           ? requestsRes.data.data.filter(r => r.status === 'pending').length 
           : 0,

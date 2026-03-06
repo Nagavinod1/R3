@@ -3,7 +3,7 @@ import { adminAPI, bedAPI } from '../../services/api';
 import { useSocket } from '../../context/SocketContext';
 import { 
   FiGrid, FiUser, FiCalendar, FiClock, FiCheckCircle, 
-  FiXCircle, FiSearch, FiFilter, FiMapPin, FiPhone,
+  FiXCircle, FiSearch, FiMapPin, FiPhone,
   FiAlertTriangle, FiRefreshCw
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
@@ -42,96 +42,28 @@ const BedBookingManagement = () => {
       const response = await adminAPI.getBedBookings().catch(() => null);
       
       if (response?.data?.success && response?.data?.data) {
-        setBookings(Array.isArray(response.data.data) ? response.data.data : []);
+        const normalizedBookings = (Array.isArray(response.data.data) ? response.data.data : []).map((booking) => ({
+          ...booking,
+          patientName: booking.patientDetails?.name || booking.patient?.name || 'Unknown',
+          reason: booking.patientDetails?.condition || booking.patientDetails?.diagnosis || booking.notes || '',
+          preferredDate: booking.admissionDate || booking.expectedDischargeDate || booking.createdAt,
+          hospitalName: booking.hospital?.name || '',
+          user: {
+            name: booking.patient?.name || booking.patientDetails?.name || 'Unknown',
+            email: booking.patient?.email || '',
+            phone: booking.patientDetails?.phone || booking.patient?.phone || ''
+          }
+        }));
+
+        setBookings(normalizedBookings);
         
-        // Extract unique hospitals
-        const uniqueHospitals = [...new Set(response.data.data.map(b => b.bed?.hospital?.name).filter(Boolean))];
+        // Extract unique hospitals from the populated hospital field
+        const uniqueHospitals = [...new Set(normalizedBookings.map(b => b.hospitalName).filter(Boolean))];
         setHospitals(uniqueHospitals);
       } else {
-        // Mock data for demo
-        setBookings([
-          {
-            _id: '1',
-            bed: { 
-              bedNumber: 'E-001', 
-              type: 'emergency', 
-              ward: 'Emergency',
-              floor: 1,
-              hospital: { name: 'City General Hospital', address: { city: 'Mumbai' }, phone: '+91 9876543210' }
-            },
-            user: { name: 'Rahul Sharma', email: 'rahul@email.com', phone: '+91 9123456780' },
-            patientName: 'Rahul Sharma',
-            reason: 'Emergency admission - chest pain',
-            preferredDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
-            status: 'pending',
-            createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000)
-          },
-          {
-            _id: '2',
-            bed: { 
-              bedNumber: 'E-003', 
-              type: 'emergency', 
-              ward: 'Emergency',
-              floor: 1,
-              hospital: { name: 'Apollo Hospital', address: { city: 'Delhi' }, phone: '+91 9876543211' }
-            },
-            user: { name: 'Priya Patel', email: 'priya@email.com', phone: '+91 9123456781' },
-            patientName: 'Priya Patel',
-            reason: 'Surgery recovery',
-            preferredDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-            status: 'approved',
-            createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000)
-          },
-          {
-            _id: '3',
-            bed: { 
-              bedNumber: 'E-002', 
-              type: 'emergency', 
-              ward: 'Emergency',
-              floor: 1,
-              hospital: { name: 'City General Hospital', address: { city: 'Mumbai' }, phone: '+91 9876543210' }
-            },
-            user: { name: 'Amit Kumar', email: 'amit@email.com', phone: '+91 9123456782' },
-            patientName: 'Amit Kumar',
-            reason: 'Scheduled operation',
-            preferredDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-            status: 'confirmed',
-            createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000)
-          },
-          {
-            _id: '4',
-            bed: { 
-              bedNumber: 'E-005', 
-              type: 'emergency', 
-              ward: 'Emergency',
-              floor: 1,
-              hospital: { name: 'LifeLine Hospital', address: { city: 'Pune' }, phone: '+91 9876543212' }
-            },
-            user: { name: 'Sneha Gupta', email: 'sneha@email.com', phone: '+91 9123456783' },
-            patientName: 'Sneha Gupta',
-            reason: 'Accident emergency',
-            preferredDate: new Date(),
-            status: 'pending',
-            createdAt: new Date(Date.now() - 30 * 60 * 1000)
-          },
-          {
-            _id: '5',
-            bed: { 
-              bedNumber: 'E-004', 
-              type: 'emergency', 
-              ward: 'Emergency',
-              floor: 1,
-              hospital: { name: 'Metro Healthcare', address: { city: 'Chennai' }, phone: '+91 9876543213' }
-            },
-            user: { name: 'Vikram Singh', email: 'vikram@email.com', phone: '+91 9123456784' },
-            patientName: 'Vikram Singh',
-            reason: 'Post-operative care',
-            preferredDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-            status: 'rejected',
-            createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000)
-          }
-        ]);
-        setHospitals(['City General Hospital', 'Apollo Hospital', 'LifeLine Hospital', 'Metro Healthcare']);
+        // No data from API
+        setBookings([]);
+        setHospitals([]);
       }
     } catch (error) {
       console.error('Error fetching bookings:', error);
@@ -200,7 +132,7 @@ const BedBookingManagement = () => {
 
   const filteredBookings = bookings.filter(booking => {
     const matchesStatus = filterStatus === 'all' || booking.status === filterStatus;
-    const matchesHospital = filterHospital === 'all' || booking.bed?.hospital?.name === filterHospital;
+    const matchesHospital = filterHospital === 'all' || booking.hospitalName === filterHospital;
     const matchesSearch = !search || 
       booking.patientName?.toLowerCase().includes(search.toLowerCase()) ||
       booking.user?.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -425,7 +357,7 @@ const BedBookingManagement = () => {
                   <div>
                     <div className="flex items-center space-x-2 mb-2">
                       <FiMapPin className="text-gray-400" />
-                      <span className="font-medium text-gray-700">{booking.bed?.hospital?.name}</span>
+                      <span className="font-medium text-gray-700">{booking.hospitalName || booking.hospital?.name || 'Unknown'}</span>
                     </div>
                     <div className="flex items-center space-x-2">
                       <FiPhone className="text-gray-400" />

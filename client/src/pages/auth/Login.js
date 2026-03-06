@@ -49,7 +49,7 @@ const Login = () => {
             <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center">
               <FiActivity className="text-primary-600 text-2xl" />
             </div>
-            <span className="text-2xl font-bold text-white">MY HEALTH CARE</span>
+            <span className="text-2xl font-bold text-white">HealthCare HMS</span>
           </Link>
         </div>
 

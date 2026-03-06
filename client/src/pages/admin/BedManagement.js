@@ -18,14 +18,14 @@ const BedManagement = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [formData, setFormData] = useState({
     hospital: '',
-    bedType: 'emergency',
+    bedType: 'general',
     bedNumber: '',
     ward: '',
     floor: ''
   });
   const { socket } = useSocket();
 
-  const bedTypes = ['emergency'];
+  const bedTypes = ['general', 'semi-private', 'private', 'ICU', 'NICU', 'PICU', 'CCU', 'emergency', 'maternity', 'pediatric', 'isolation'];
 
   useEffect(() => {
     fetchData();
@@ -85,7 +85,7 @@ const BedManagement = () => {
       setShowAddModal(false);
       setFormData({
         hospital: '',
-        bedType: 'emergency',
+        bedType: 'general',
         bedNumber: '',
         ward: '',
         floor: ''
@@ -140,10 +140,13 @@ const BedManagement = () => {
 
   const getTypeColor = (type) => {
     switch (type) {
-      case 'icu': return 'bg-red-50 text-red-600';
+      case 'ICU': case 'NICU': case 'PICU': case 'CCU': return 'bg-red-50 text-red-600';
       case 'emergency': return 'bg-orange-50 text-orange-600';
       case 'pediatric': return 'bg-blue-50 text-blue-600';
       case 'maternity': return 'bg-pink-50 text-pink-600';
+      case 'private': case 'semi-private': return 'bg-indigo-50 text-indigo-600';
+      case 'isolation': return 'bg-yellow-50 text-yellow-600';
+      case 'general': return 'bg-green-50 text-green-600';
       default: return 'bg-purple-50 text-purple-600';
     }
   };

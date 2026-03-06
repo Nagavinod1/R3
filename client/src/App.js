@@ -19,6 +19,10 @@ import AdminUsers from './pages/admin/Users';
 import AdminStaff from './pages/admin/Staff';
 import AdminHospitals from './pages/admin/Hospitals';
 import AdminAlerts from './pages/admin/Alerts';
+import AdminBedBookings from './pages/admin/BedBookingManagement';
+import AdminBedManagement from './pages/admin/BedManagement';
+import AdminBlockchainVerification from './pages/admin/BlockchainVerification';
+import AdminBloodManagement from './pages/admin/BloodManagement';
 
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
@@ -114,6 +118,10 @@ function App() {
         <Route path="staff" element={<AdminStaff />} />
         <Route path="hospitals" element={<AdminHospitals />} />
         <Route path="alerts" element={<AdminAlerts />} />
+        <Route path="bed-bookings" element={<AdminBedBookings />} />
+        <Route path="beds" element={<AdminBedManagement />} />
+        <Route path="blood" element={<AdminBloodManagement />} />
+        <Route path="blockchain" element={<AdminBlockchainVerification />} />
       </Route>
 
       {/* Staff Routes */}

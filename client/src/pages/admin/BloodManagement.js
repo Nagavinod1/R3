@@ -4,7 +4,7 @@ import { useSocket } from '../../context/SocketContext';
 import {
   FiSearch, FiDroplet, FiPlus, FiAlertTriangle, FiX,
   FiCalendar, FiCheckCircle, FiArrowLeft, FiMapPin,
-  FiPhone, FiActivity, FiPackage, FiTrendingUp, FiChevronRight
+  FiActivity, FiPackage, FiTrendingUp, FiChevronRight
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -129,7 +129,7 @@ const BloodManagement = () => {
     try {
       const bloodData = {
         bloodGroup: formData.bloodGroup,
-        quantity: parseInt(formData.quantity) || 1,
+        quantity: Number.parseInt(formData.quantity, 10) || 1,
         hospitalId: formData.hospital,
         collectionDate: formData.collectionDate || new Date().toISOString(),
         expiryDate: formData.expiryDate || new Date(Date.now() + 42 * 24 * 60 * 60 * 1000).toISOString(),
@@ -344,7 +344,7 @@ const BloodManagement = () => {
                           <span className="font-semibold text-gray-800">{unit.bloodGroup}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{unit.donorId || 'Anonymous'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{unit.donorInfo?.bloodDonationId || 'Anonymous'}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">
                         {unit.collectionDate ? new Date(unit.collectionDate).toLocaleDateString() : '—'}
                       </td>

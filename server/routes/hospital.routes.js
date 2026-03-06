@@ -71,9 +71,9 @@ router.get('/nearby', async (req, res) => {
         $near: {
           $geometry: {
             type: 'Point',
-            coordinates: [parseFloat(longitude), parseFloat(latitude)]
+            coordinates: [Number.parseFloat(longitude), Number.parseFloat(latitude)]
           },
-          $maxDistance: parseInt(maxDistance)
+          $maxDistance: Number.parseInt(maxDistance, 10)
         }
       }
     }).select('name address totalBeds availableBeds hasBloodBank hasEmergency phone rating');

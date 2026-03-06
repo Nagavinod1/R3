@@ -5,7 +5,7 @@ import { useSocket } from '../context/SocketContext';
 import FloatingAIAssistant from '../components/FloatingAIAssistant';
 import NotificationDropdown from '../components/NotificationDropdown';
 import {
-  FiHome, FiUsers, FiUserCheck, FiActivity,
+  FiHome, FiUsers, FiUserCheck, FiActivity, FiGrid, FiDroplet, FiCheckSquare, FiShield,
   FiAlertTriangle, FiLogOut, FiMenu, FiX,
   FiUser
 } from 'react-icons/fi';
@@ -27,6 +27,10 @@ const AdminLayout = () => {
     { path: '/admin/staff', icon: FiUserCheck, label: 'Staff' },
     { path: '/admin/hospitals', icon: FiActivity, label: 'Hospitals' },
     { path: '/admin/alerts', icon: FiAlertTriangle, label: 'Alerts' },
+    { path: '/admin/bed-bookings', icon: FiCheckSquare, label: 'Bed Bookings' },
+    { path: '/admin/beds', icon: FiGrid, label: 'Bed Management' },
+    { path: '/admin/blood', icon: FiDroplet, label: 'Blood Management' },
+    { path: '/admin/blockchain', icon: FiShield, label: 'Blockchain' },
   ];
 
   return (

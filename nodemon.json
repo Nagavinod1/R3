@@ -1,0 +1,12 @@
+{
+  "watch": ["server"],
+  "ext": "js,mjs,cjs,json",
+  "ignore": [
+    "client/**",
+    "ai-service/**",
+    "blockchain/**",
+    "server/uploads/**",
+    "node_modules/**",
+    "*.log"
+  ]
+}

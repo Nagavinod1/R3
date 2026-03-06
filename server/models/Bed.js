@@ -20,7 +20,7 @@ const BedSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['emergency'],
+    enum: ['general', 'semi-private', 'private', 'ICU', 'NICU', 'PICU', 'CCU', 'emergency', 'maternity', 'pediatric', 'isolation'],
     default: 'emergency'
   },
   status: {

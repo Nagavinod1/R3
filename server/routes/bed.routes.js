@@ -118,14 +118,6 @@ router.get('/stats', async (req, res) => {
       ...(hospitalId && { hospital: hospitalId }),
       status: 'occupied' 
     });
-    const maintenanceBeds = await Bed.countDocuments({ 
-      ...(hospitalId && { hospital: hospitalId }),
-      status: 'maintenance' 
-    });
-    const reservedBeds = await Bed.countDocuments({ 
-      ...(hospitalId && { hospital: hospitalId }),
-      status: 'reserved' 
-    });
 
     const byType = await Bed.getAvailableBedsByType(hospitalId);
 
@@ -135,8 +127,7 @@ router.get('/stats', async (req, res) => {
         total: totalBeds,
         available: availableBeds,
         occupied: occupiedBeds,
-        reserved: reservedBeds,
-        maintenance: maintenanceBeds,
+        reserved: totalBeds - availableBeds - occupiedBeds,
         byType
       }
     });
@@ -393,19 +384,13 @@ router.post('/reserve', protect, bedBookingValidation, validate, async (req, res
     // Emit socket event
     const io = req.app.get('io');
     if (io) {
-      const bookingPayload = {
+      io.to('staff').emit('newBedBooking', {
         bookingId: booking._id,
         hospitalId: bed.hospital._id,
-        hospitalName: bed.hospital.name,
         bedNumber: bed.bedNumber,
         ward: bed.ward,
-        bookingType,
-        patientName: patientDetails?.name || 'Unknown',
-        bookedBy: req.user.name
-      };
-
-      io.to('staff').emit('newBedBooking', bookingPayload);
-      io.to('admin').emit('newBedBooking', bookingPayload);
+        bookingType
+      });
 
       io.emit('bedUpdate', {
         type: 'reserved',
@@ -431,7 +416,7 @@ router.post('/reserve', protect, bedBookingValidation, validate, async (req, res
 // @route   GET /api/beds/bookings
 // @desc    Get bed bookings
 // @access  Private
-router.get('/bookings', protect, async (req, res) => {
+router.get('/bookings', protect, checkApproval, async (req, res) => {
   try {
     const { status } = req.query;
     let query = {};
@@ -457,7 +442,6 @@ router.get('/bookings', protect, async (req, res) => {
       })
       .populate('hospital', 'name address phone')
       .populate('patient', 'name email phone')
-      .populate('user', 'name email phone')
       .sort({ createdAt: -1 });
 
     res.json({
@@ -476,7 +460,7 @@ router.get('/bookings', protect, async (req, res) => {
 // @route   PUT /api/beds/bookings/:id
 // @desc    Update bed booking status (approve/reject/confirm/cancel)
 // @access  Staff/Admin
-router.put('/bookings/:id', protect, authorize('staff', 'admin'), async (req, res) => {
+router.put('/bookings/:id', protect, authorize('staff', 'admin'), checkApproval, async (req, res) => {
   try {
     const { status, notes } = req.body;
 
@@ -490,6 +474,9 @@ router.put('/bookings/:id', protect, authorize('staff', 'admin'), async (req, re
         message: 'Booking not found'
       });
     }
+
+    // Capture previous status before transitioning.
+    const previousStatus = booking.status;
 
     // Update booking status
     booking.status = status;
@@ -507,17 +494,21 @@ router.put('/bookings/:id', protect, authorize('staff', 'admin'), async (req, re
       if (booking.bed) {
         await Bed.findByIdAndUpdate(booking.bed._id, {
           status: 'reserved',
-          isAvailable: false
+          isAvailable: false,
+          currentPatient: booking.patient,
+          currentBooking: booking._id
         });
       }
     }
 
     if (status === 'rejected' || status === 'cancelled') {
       // Free up the bed if it was reserved
-      if (booking.bed && (booking.status === 'confirmed' || booking.status === 'approved')) {
+      if (booking.bed && ['pending', 'approved', 'confirmed'].includes(previousStatus)) {
         await Bed.findByIdAndUpdate(booking.bed._id, {
           status: 'available',
-          isAvailable: true
+          isAvailable: true,
+          currentPatient: null,
+          currentBooking: null
         });
       }
     }
@@ -532,6 +523,11 @@ router.put('/bookings/:id', protect, authorize('staff', 'admin'), async (req, re
     });
 
     await booking.save();
+
+    // Update hospital bed count after booking transition.
+    if (booking.hospital?.updateBedCount) {
+      await booking.hospital.updateBedCount();
+    }
 
     // Notify patient via socket
     const io = req.app.get('io');
@@ -597,14 +593,22 @@ router.put('/bookings/:id/process', protect, authorize('staff', 'admin'), checkA
       if (status === 'checked-out') {
         booking.actualDischargeDate = new Date();
         await booking.calculateCharges();
+        // Mark bed for cleaning after discharge.
+        await Bed.findByIdAndUpdate(booking.bed._id, {
+          status: 'cleaning',
+          isAvailable: false,
+          currentPatient: null,
+          currentBooking: null
+        });
+      } else {
+        // Cancellation should free the bed immediately.
+        await Bed.findByIdAndUpdate(booking.bed._id, {
+          status: 'available',
+          isAvailable: true,
+          currentPatient: null,
+          currentBooking: null
+        });
       }
-      // Free up the bed
-      await Bed.findByIdAndUpdate(booking.bed._id, {
-        status: 'cleaning',
-        isAvailable: false,
-        currentPatient: null,
-        currentBooking: null
-      });
     }
 
     booking.notes = notes;

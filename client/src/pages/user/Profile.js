@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { authAPI, userAPI } from '../../services/api';
+import { authAPI } from '../../services/api';
 import { 
   FiUser, FiMail, FiPhone, FiDroplet, FiMapPin, FiLock,
   FiEdit2, FiSave, FiX, FiShield, FiCalendar, FiActivity
@@ -40,7 +40,11 @@ const Profile = () => {
         email: user.email || '',
         phone: user.phone || '',
         bloodGroup: user.bloodGroup || '',
-        address: user.address || ''
+        address: typeof user.address === 'string'
+          ? user.address
+          : [user.address?.street, user.address?.city, user.address?.district, user.address?.state, user.address?.pincode]
+              .filter(Boolean)
+              .join(', ')
       });
       setStats({
         bloodRequests: 5,
@@ -70,19 +74,17 @@ const Profile = () => {
     setLoading(true);
 
     try {
-      const response = await authAPI.updateProfile(formData);
+      const response = await authAPI.updateProfile({
+        ...formData,
+        address: typeof formData.address === 'string' ? { street: formData.address } : formData.address
+      });
       if (response.data.success) {
-        setUser(response.data.data);
+        setUser(response.data.user);
         setIsEditing(false);
         toast.success('Profile updated successfully');
       }
     } catch (error) {
-      // Simulate success for demo
-      const updatedUser = { ...user, ...formData };
-      setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      setIsEditing(false);
-      toast.success('Profile updated successfully');
+      toast.error(error.response?.data?.message || 'Failed to update profile');
     } finally {
       setLoading(false);
     }
@@ -114,10 +116,7 @@ const Profile = () => {
         toast.success('Password changed successfully');
       }
     } catch (error) {
-      // Simulate success for demo
-      setIsChangingPassword(false);
-      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      toast.success('Password changed successfully');
+      toast.error(error.response?.data?.message || 'Failed to change password');
     } finally {
       setLoading(false);
     }
@@ -301,7 +300,11 @@ const Profile = () => {
                     email: user?.email || '',
                     phone: user?.phone || '',
                     bloodGroup: user?.bloodGroup || '',
-                    address: user?.address || ''
+                    address: typeof user?.address === 'string'
+                      ? user.address
+                      : [user?.address?.street, user?.address?.city, user?.address?.district, user?.address?.state, user?.address?.pincode]
+                          .filter(Boolean)
+                          .join(', ')
                   });
                 }}
                 className="btn-secondary flex items-center space-x-2"

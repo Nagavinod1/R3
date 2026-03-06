@@ -12,6 +12,56 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODELS = ['gpt-4o-mini', 'gpt-3.5-turbo'];
+const FIRST_AID_TIPS = [
+  'Keep an emergency kit with bandages, antiseptic, and basic medicines.',
+  'For burns, cool under running water for at least 10 minutes.',
+  'For severe bleeding, apply firm direct pressure immediately.',
+  'In chest pain emergencies, call 102/108 without delay.',
+  'For fainting, lay the person flat and elevate legs slightly.'
+];
+const LOG_THROTTLE_MS = 60 * 1000;
+const providerLogTracker = {};
+
+function isConfiguredApiKey(value) {
+  if (!value) return false;
+
+  const normalized = String(value).trim().toLowerCase();
+  return normalized.length > 0
+    && !normalized.includes('replace')
+    && !normalized.includes('placeholder')
+    && !normalized.includes('your_');
+}
+
+function logProviderFailure(provider, message) {
+  const now = Date.now();
+  const lastLog = providerLogTracker[provider] || 0;
+
+  if (now - lastLog >= LOG_THROTTLE_MS) {
+    console.warn(`[AI] ${provider} unavailable: ${message}`);
+    providerLogTracker[provider] = now;
+  }
+}
+
+// Try Python AI endpoints across versioned and legacy paths.
+async function callPythonAI(method, paths, payload, timeout = 10000) {
+  let lastError = null;
+
+  for (const path of paths) {
+    try {
+      const response = await axios({
+        method,
+        url: `${PYTHON_AI_URL}${path}`,
+        data: payload,
+        timeout
+      });
+      return response;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Python AI request failed');
+}
 
 // Health-related keywords for validation
 const HEALTH_KEYWORDS = [
@@ -177,21 +227,21 @@ To request blood: Fill out a blood request form with patient info and reason.
 
 // Function to call OpenAI API (PRIMARY)
 async function callOpenAI(message, context = '') {
-  if (!OPENAI_API_KEY) {
+  if (!isConfiguredApiKey(OPENAI_API_KEY)) {
     throw new Error('OpenAI API key not configured');
   }
 
-  const systemPrompt = context 
-    ? `${HEALTH_SYSTEM_PROMPT}\n\nPrevious context: ${context}` 
+  const systemPrompt = context
+    ? `${HEALTH_SYSTEM_PROMPT}\n\nPrevious context: ${context}`
     : HEALTH_SYSTEM_PROMPT;
 
-  // Try each model in order
+  // Try each model in order.
   for (const model of OPENAI_MODELS) {
     try {
       const response = await axios.post(
         OPENAI_API_URL,
         {
-          model: model,
+          model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: message }
@@ -202,18 +252,28 @@ async function callOpenAI(message, context = '') {
         {
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OPENAI_API_KEY}`
+            Authorization: `Bearer ${OPENAI_API_KEY}`
           },
           timeout: 30000
         }
       );
 
       if (response.data.choices && response.data.choices[0]?.message?.content) {
-        console.log(`✅ OpenAI response received using model: ${model}`);
         return response.data.choices[0].message.content;
       }
-    } catch (err) {
-      console.error(`⚠️ OpenAI model ${model} failed:`, err.response?.data?.error?.message || err.message);
+    } catch (error) {
+      const statusCode = error.response?.status;
+      const errorMessage = error.response?.data?.error?.message || error.message;
+
+      if (statusCode === 401 || statusCode === 403) {
+        throw new Error('OpenAI authentication failed');
+      }
+
+      if (statusCode === 429) {
+        throw new Error('OpenAI rate limit or quota exceeded');
+      }
+
+      logProviderFailure('OpenAI', `model ${model}: ${errorMessage}`);
       continue;
     }
   }
@@ -223,51 +283,64 @@ async function callOpenAI(message, context = '') {
 
 // Function to call Google Gemini API (FALLBACK)
 async function callGeminiAPI(message, context = '') {
-  if (!GEMINI_API_KEY) {
+  if (!isConfiguredApiKey(GEMINI_API_KEY)) {
     throw new Error('Gemini API key not configured');
   }
 
-  const systemPrompt = context 
-    ? `${HEALTH_SYSTEM_PROMPT}\n\nPrevious context: ${context}` 
+  const systemPrompt = context
+    ? `${HEALTH_SYSTEM_PROMPT}\n\nPrevious context: ${context}`
     : HEALTH_SYSTEM_PROMPT;
 
-  const response = await axios.post(
-    `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
-    {
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: `${systemPrompt}\n\nUser Question: ${message}` }]
-        }
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 1024,
+  try {
+    const response = await axios.post(
+      `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
+      {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: `${systemPrompt}\n\nUser Question: ${message}` }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 1024
+        },
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' }
+        ]
       },
-      safetySettings: [
-        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' }
-      ]
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      timeout: 30000
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    );
+
+    if (response.data.candidates && response.data.candidates[0]?.content?.parts[0]?.text) {
+      return response.data.candidates[0].content.parts[0].text;
     }
-  );
 
-  if (response.data.candidates && response.data.candidates[0]?.content?.parts[0]?.text) {
-    return response.data.candidates[0].content.parts[0].text;
+    throw new Error('Invalid response from Gemini API');
+  } catch (error) {
+    const statusCode = error.response?.status;
+
+    if (statusCode === 400 || statusCode === 401 || statusCode === 403) {
+      throw new Error('Gemini authentication/configuration failed');
+    }
+
+    if (statusCode === 429) {
+      throw new Error('Gemini rate limit or quota exceeded');
+    }
+
+    throw error;
   }
-  
-  throw new Error('Invalid response from Gemini API');
 }
-
 // @route   POST /api/ai/chat
 // @desc    AI Chatbot for first aid, emergency handling
 // @access  Public
@@ -299,9 +372,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
 
     try {
       // Try OpenAI API first (PRIMARY)
-      console.log('🤖 Calling OpenAI API...');
       const aiResponse = await callOpenAI(message, context);
-      console.log('✅ OpenAI API response received');
       
       return res.json({
         success: true,
@@ -312,13 +383,11 @@ router.post('/chat', optionalAuth, async (req, res) => {
         }
       });
     } catch (openaiError) {
-      console.error('❌ OpenAI API error:', openaiError.message);
+      logProviderFailure('OpenAI', openaiError.message);
       
       // Try Google Gemini API as secondary
       try {
-        console.log('🤖 Falling back to Gemini API...');
         const geminiResponse = await callGeminiAPI(message, context);
-        console.log('✅ Gemini API response received');
         
         return res.json({
           success: true,
@@ -329,21 +398,29 @@ router.post('/chat', optionalAuth, async (req, res) => {
           }
         });
       } catch (geminiError) {
-        console.error('❌ Gemini API error:', geminiError.message);
+        logProviderFailure('Gemini', geminiError.message);
         
         // Try Python AI service as tertiary backup
         try {
-          const response = await axios.post(`${PYTHON_AI_URL}/chat`, {
+          const response = await callPythonAI(
+            'post',
+            ['/api/ai/chat', '/chat'],
+            {
             message,
             context,
             userId: req.user?._id
-          }, { timeout: 10000 });
+            },
+            10000
+          );
+
+          const pythonData = response.data?.data || response.data;
 
           return res.json({
             success: true,
             data: {
-              ...response.data,
-              source: 'python-ai'
+              response: pythonData.response || getFallbackResponse(message),
+              source: 'python-ai',
+              isHealthRelated: true
             }
           });
         } catch (pythonError) {
@@ -385,11 +462,16 @@ router.post('/emergency-recommendation', optionalAuth, async (req, res) => {
     }
 
     try {
-      const response = await axios.post(`${PYTHON_AI_URL}/emergency-recommendation`, {
-        symptoms,
-        severity,
-        location
-      }, { timeout: 10000 });
+      const response = await callPythonAI(
+        'post',
+        ['/api/ai/recommend', '/emergency-recommendation'],
+        {
+          symptoms,
+          severity,
+          location
+        },
+        10000
+      );
 
       return res.json({
         success: true,
@@ -445,10 +527,10 @@ router.get('/predict-stock', protect, async (req, res) => {
     ]);
 
     try {
-      const response = await axios.post(`${PYTHON_AI_URL}/predict-stock`, {
+      const response = await callPythonAI('post', ['/predict-stock'], {
         inventory,
         requestTrends
-      }, { timeout: 10000 });
+      }, 10000);
 
       return res.json({
         success: true,
@@ -480,12 +562,12 @@ router.post('/priority-classification', protect, async (req, res) => {
     const { patientInfo, condition, symptoms, vitalSigns } = req.body;
 
     try {
-      const response = await axios.post(`${PYTHON_AI_URL}/priority-classification`, {
+      const response = await callPythonAI('post', ['/priority-classification'], {
         patientInfo,
         condition,
         symptoms,
         vitalSigns
-      }, { timeout: 10000 });
+      }, 10000);
 
       return res.json({
         success: true,
@@ -525,6 +607,70 @@ router.get('/first-aid/:condition', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching first aid instructions',
+      error: error.message
+    });
+  }
+});
+
+// @route   GET /api/ai/health-info/:topic
+// @desc    Get AI health info by topic
+// @access  Public
+router.get('/health-info/:topic', async (req, res) => {
+  try {
+    const { topic } = req.params;
+
+    try {
+      const response = await callPythonAI('get', [`/api/ai/health-info/${encodeURIComponent(topic)}`], null, 10000);
+      return res.json({
+        success: true,
+        data: response.data?.data || response.data
+      });
+    } catch (pythonError) {
+      const fallback = getFirstAidInstructions(topic);
+      return res.json({
+        success: true,
+        data: {
+          topic,
+          ...fallback
+        },
+        source: 'fallback'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching health info',
+      error: error.message
+    });
+  }
+});
+
+// @route   GET /api/ai/first-aid-tips
+// @desc    Get quick first aid tips
+// @access  Public
+router.get('/first-aid-tips', async (req, res) => {
+  try {
+    const count = Math.max(1, Number.parseInt(req.query.count, 10) || 3);
+
+    try {
+      const response = await callPythonAI('get', [`/api/ai/first-aid-tips?count=${count}`], null, 10000);
+      return res.json({
+        success: true,
+        data: response.data?.data || response.data
+      });
+    } catch (pythonError) {
+      return res.json({
+        success: true,
+        data: {
+          tips: FIRST_AID_TIPS.slice(0, count)
+        },
+        source: 'fallback'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching first aid tips',
       error: error.message
     });
   }
@@ -953,3 +1099,4 @@ function fallbackTriage(symptoms, description, vitals) {
 }
 
 module.exports = router;
+

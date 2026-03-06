@@ -142,20 +142,30 @@ async function reseedAll() {
 
     // ========== STEP 4: CREATE BEDS ==========
     console.log('🛏️  Creating beds...');
+    const bedTypes = ['general', 'semi-private', 'private', 'ICU', 'emergency', 'maternity', 'pediatric'];
     const bedsToCreate = [];
     for (const hospital of hospitals) {
       for (let i = 1; i <= 30; i++) {
+        const bedType = bedTypes[Math.floor(Math.random() * bedTypes.length)];
         const isAvailable = Math.random() > 0.3;
+        const prefix = bedType === 'ICU' ? 'ICU' : bedType.charAt(0).toUpperCase();
+        const wardNames = {
+          'general': 'General Ward', 'semi-private': 'Semi-Private Ward', 'private': 'Private Wing',
+          'ICU': 'Intensive Care Unit', 'emergency': 'Emergency Ward',
+          'maternity': 'Maternity Ward', 'pediatric': 'Pediatric Ward'
+        };
         bedsToCreate.push({
-          bedNumber: `E${String(i).padStart(3, '0')}`,
-          ward: `Ward ${Math.ceil(i / 10)}`,
+          bedNumber: `${prefix}-${String(i).padStart(3, '0')}`,
+          ward: wardNames[bedType] || 'General Ward',
           floor: Math.ceil(i / 10),
-          type: 'emergency',
+          type: bedType,
           hospital: hospital._id,
           status: isAvailable ? 'available' : 'occupied',
           isAvailable: isAvailable,
-          pricePerDay: 3000,
-          facilities: ['oxygen', 'monitor', 'nurse_call']
+          pricePerDay: bedType === 'ICU' ? 8000 : bedType === 'private' ? 5000 : bedType === 'semi-private' ? 3500 : 3000,
+          hasOxygen: ['ICU', 'emergency', 'CCU'].includes(bedType) || Math.random() > 0.5,
+          hasVentilator: ['ICU', 'CCU'].includes(bedType) || Math.random() > 0.8,
+          hasMonitor: ['ICU', 'emergency', 'CCU'].includes(bedType) || Math.random() > 0.6
         });
       }
     }
@@ -170,17 +180,23 @@ async function reseedAll() {
       if (!hospital.hasBloodBank) continue;
       for (const bloodGroup of bloodGroups) {
         const quantity = Math.floor(Math.random() * 30) + 5;
-        const expiryDate = new Date();
-        expiryDate.setDate(expiryDate.getDate() + Math.floor(Math.random() * 30) + 10);
+        const collectionDate = new Date();
+        collectionDate.setDate(collectionDate.getDate() - Math.floor(Math.random() * 15));
+        const expiryDate = new Date(collectionDate);
+        expiryDate.setDate(expiryDate.getDate() + 42);
+        const donorNum = Math.floor(Math.random() * 9000) + 1000;
         bloodUnitsToCreate.push({
           bloodGroup, quantity,
           hospital: hospital._id,
-          collectionDate: new Date(),
+          collectionDate,
           expiryDate,
           componentType: 'whole_blood',
           status: 'available',
           addedBy: adminUser._id,
           storageLocation: `Refrigerator ${Math.floor(Math.random() * 5) + 1}`,
+          donorInfo: {
+            bloodDonationId: `DON-${bloodGroup.replace('+', 'P').replace('-', 'N')}-${donorNum}`
+          },
           history: [{ action: 'added', performedBy: adminUser._id, timestamp: new Date() }]
         });
       }

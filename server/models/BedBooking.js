@@ -23,7 +23,7 @@ const BedBookingSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'checked-in', 'checked-out', 'cancelled', 'no-show'],
+    enum: ['pending', 'approved', 'confirmed', 'checked-in', 'checked-out', 'cancelled', 'rejected', 'no-show'],
     default: 'pending'
   },
   patientDetails: {

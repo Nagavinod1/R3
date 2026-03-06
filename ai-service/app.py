@@ -21,7 +21,7 @@ CORS(app, origins=['http://localhost:3000'])
 # ============================================================================
 
 # Initialize OpenAI configuration
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', 'sk-th-XeV1XgO2z3mliiQhDw9HSypVAvKHexd27Z8kTtFbHh1xSCugu1wVJ2Xj8EPnlr1Dim4P3RAPrSQaR8VOiVDNLLzQjL85zXxTtolO')
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 OPENAI_BASE_URL = "https://api.openai.com/v1/chat/completions"
 
 # Available models (in order of preference)
@@ -30,8 +30,10 @@ AI_MODELS = [
     "gpt-3.5-turbo"
 ]
 
-print(f"✅ OpenAI client configured")
-print(f"🔑 API Key: {OPENAI_API_KEY[:20]}...")
+if OPENAI_API_KEY:
+    print("OpenAI client configured")
+else:
+    print("OpenAI API key is not configured; using fallback responses")
 
 # System prompt for health assistant
 HEALTH_ASSISTANT_PROMPT = """You are **HealthWise AI**, the intelligent health assistant for the **Blockchain-Enabled Intelligent Hospital Bed and Blood Resource Management System** — a full-stack healthcare platform serving the Kurnool district of Andhra Pradesh, India.
@@ -160,8 +162,14 @@ Allergic Reaction (Anaphylaxis): Use EpiPen if available, call 102/108, lay flat
 11. For questions about using the platform, provide clear step-by-step guidance
 12. If a user describes severe symptoms, immediately recommend calling 102/108 before giving any other advice"""
 
-def get_gemini_response(user_message, conversation_history=None):
+def get_gemini_response(user_message, _conversation_history=None):
     """Get response from OpenAI with fallback models"""
+    if not OPENAI_API_KEY:
+        return {
+            'success': False,
+            'error': 'OPENAI_API_KEY not configured',
+            'response': get_intelligent_fallback(user_message)
+        }
     
     # Build the messages for OpenAI
     messages = [
@@ -203,6 +211,8 @@ def get_gemini_response(user_message, conversation_history=None):
             else:
                 last_error = f"Status {response.status_code}: {response.text[:100]}"
                 print(f"⚠️ Model {model} failed: {last_error}")
+                if response.status_code in (400, 401, 403):
+                    break
                 continue
                 
         except Exception as e:
@@ -211,7 +221,7 @@ def get_gemini_response(user_message, conversation_history=None):
             continue
     
     # All models failed, use intelligent fallback
-    print(f"❌ All OpenAI models failed. Using intelligent fallback.")
+    print("❌ All OpenAI models failed. Using intelligent fallback.")
     return {
         'success': False,
         'error': last_error,
@@ -223,7 +233,7 @@ def get_intelligent_fallback(message):
     result = analyze_message(message)
     return result['response']
 
-def get_fallback_response(message):
+def get_fallback_response(_message):
     """Basic fallback response when Gemini is unavailable"""
     return f"""I apologize, but I'm having trouble connecting to my AI services right now.
 
@@ -1239,20 +1249,24 @@ if __name__ == '__main__':
     port = int(os.environ.get('AI_SERVICE_PORT', 5001))
     debug = os.environ.get('FLASK_ENV', 'development') == 'development'
     
-    print(f"🤖 AI Health Assistant Service v3.0 - Powered by OpenAI")
-    print(f"🧠 AI Model: gpt-4o-mini")
-    print(f"🌐 Provider: OpenAI")
+    print("🤖 AI Health Assistant Service v3.0 - Powered by OpenAI")
+    print("🧠 AI Model: gpt-4o-mini")
+    print("🌐 Provider: OpenAI")
     print(f"🚀 Starting on port {port}")
-    print(f"")
-    print(f"📚 Available endpoints:")
-    print(f"   POST /api/ai/chat - Chat with OpenAI")
-    print(f"   POST /api/ai/emergency - Emergency guidance")
-    print(f"   POST /api/ai/severity-detection - Severity Detection")
-    print(f"   POST /api/ai/voice-process - Voice Input Processing")
-    print(f"   POST /api/ai/triage - Emergency Triage System")
-    print(f"   GET  /api/ai/first-aid-tips - Get first aid tips")
-    print(f"   GET  /api/ai/health-info/<topic> - Get health info")
-    print(f"   POST /api/ai/recommend - Get recommendations")
-    print(f"   GET  /api/ai/health - Health check")
+    print("")
+    print("📚 Available endpoints:")
+    print("   POST /api/ai/chat - Chat with OpenAI")
+    print("   POST /api/ai/emergency - Emergency guidance")
+    print("   POST /api/ai/severity-detection - Severity Detection")
+    print("   POST /api/ai/voice-process - Voice Input Processing")
+    print("   POST /api/ai/triage - Emergency Triage System")
+    print("   GET  /api/ai/first-aid-tips - Get first aid tips")
+    print("   GET  /api/ai/health-info/<topic> - Get health info")
+    print("   POST /api/ai/recommend - Get recommendations")
+    print("   GET  /api/ai/health - Health check")
     
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    host = os.environ.get('AI_SERVICE_HOST', '127.0.0.1')
+    app.run(host=host, port=port, debug=debug)
+
+
+

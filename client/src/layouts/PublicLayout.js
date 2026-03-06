@@ -37,7 +37,7 @@ const PublicLayout = () => {
                 <span className={`text-xl lg:text-2xl font-bold transition-colors ${
                   isScrolled ? 'text-gray-800' : 'text-white'
                 }`}>
-                  MY HEALTH CARE
+                  HealthCare <span className="text-primary-500">HMS</span>
                 </span>
               </Link>
             </div>
@@ -128,7 +128,7 @@ const PublicLayout = () => {
                 <div className="w-12 h-12 bg-gradient-to-r from-primary-500 to-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-600/30">
                   <FiHeart className="text-white text-2xl" />
                 </div>
-                <span className="text-2xl font-bold text-white">MY HEALTH CARE</span>
+                <span className="text-2xl font-bold text-white">HealthCare <span className="text-primary-400">HMS</span></span>
               </div>
               <p className="text-gray-400 leading-relaxed mb-6">
                 Blockchain-enabled intelligent hospital bed and blood resource management system. Transforming healthcare through technology.
@@ -206,7 +206,7 @@ const PublicLayout = () => {
         <div className="border-t border-gray-800">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <p className="text-sm text-gray-500">&copy; 2024 MY HEALTH CARE. All rights reserved.</p>
+              <p className="text-sm text-gray-500">&copy; 2024 HealthCare HMS. All rights reserved.</p>
               <p className="text-sm text-gray-500">Made with <FiHeart className="inline text-red-500" /> for better healthcare</p>
             </div>
           </div>

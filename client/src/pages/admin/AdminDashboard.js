@@ -152,7 +152,7 @@ const AdminDashboard = () => {
         if (dashData.hospitalDistribution && dashData.hospitalDistribution.length > 0) {
           setHospitalDistribution(dashData.hospitalDistribution.map(h => ({
             name: h._id || 'Unknown',
-            beds: h.count || 0
+            hospitals: h.count || 0
           })));
         }
       } else {
@@ -200,11 +200,7 @@ const AdminDashboard = () => {
       // Set default hospital distribution if not set
       if (hospitalDistribution.length === 0) {
         setHospitalDistribution([
-          { name: 'City Hospital', beds: 150 },
-          { name: 'General Hospital', beds: 200 },
-          { name: 'Apollo Care', beds: 120 },
-          { name: 'LifeLine Hospital', beds: 180 },
-          { name: 'Medicare Center', beds: 90 }
+          { name: 'Kurnool', hospitals: 10 }
         ]);
       }
 
@@ -434,7 +430,7 @@ const AdminDashboard = () => {
                 labelLine={false}
                 outerRadius={100}
                 fill="#8884d8"
-                dataKey="beds"
+                dataKey="hospitals"
                 nameKey="name"
                 label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
               >

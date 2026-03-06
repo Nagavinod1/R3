@@ -1,18 +1,32 @@
 const { Web3 } = require('web3');
-const path = require('path');
-const fs = require('fs');
+const path = require('node:path');
+const fs = require('node:fs');
 
-// Try to load contract ABI if it exists
+// Try to load contract ABI if it exists.
 let contractABI = null;
-const artifactPath = path.join(__dirname, '../../blockchain/artifacts/contracts/HospitalManagement.sol/HospitalManagement.json');
+const artifactPath = path.join(
+  __dirname,
+  '../../blockchain/artifacts/contracts/HospitalManagement.sol/HospitalManagement.json'
+);
+
 if (fs.existsSync(artifactPath)) {
   try {
     contractABI = require(artifactPath);
   } catch (err) {
-    console.log('⚠️ Could not load contract ABI:', err.message);
+    console.warn('Could not load contract ABI:', err.message);
   }
 } else {
-  console.log('⚠️ Contract artifacts not found. Run "npm run deploy-contracts" to compile and deploy the smart contract.');
+  console.warn('Contract artifacts not found. Run "npm run deploy-contracts" after compiling/deploying contracts.');
+}
+
+function isConfigured(value) {
+  if (!value) return false;
+
+  const normalized = String(value).trim().toLowerCase();
+  return normalized.length > 0
+    && !normalized.includes('replace')
+    && !normalized.includes('placeholder')
+    && !normalized.includes('your_');
 }
 
 class BlockchainService {
@@ -24,42 +38,54 @@ class BlockchainService {
   }
 
   async initialize() {
+    // Check if contract ABI is available.
+    if (!contractABI) {
+      console.info('Blockchain integration disabled: contract ABI not available.');
+      return false;
+    }
+
+    const contractAddress = process.env.CONTRACT_ADDRESS;
+    if (!isConfigured(contractAddress)) {
+      console.info('Blockchain integration disabled: CONTRACT_ADDRESS not configured.');
+      return false;
+    }
+
+    const networkUrl = process.env.BLOCKCHAIN_NETWORK || 'http://127.0.0.1:8545';
+
     try {
-      // Check if contract ABI is available
-      if (!contractABI) {
-        console.log('⚠️ Blockchain features disabled - contract not compiled');
+      this.web3 = new Web3(networkUrl);
+      const accounts = await this.web3.eth.getAccounts();
+
+      if (!Array.isArray(accounts) || accounts.length === 0) {
+        console.warn('Blockchain integration disabled: no accounts available from configured node.');
+        this.web3 = null;
         return false;
       }
 
-      const networkUrl = process.env.BLOCKCHAIN_NETWORK || 'http://127.0.0.1:8545';
-      this.web3 = new Web3(networkUrl);
-      
-      // Get accounts
-      const accounts = await this.web3.eth.getAccounts();
       this.account = accounts[0];
-      
-      // Initialize contract if address is set
-      if (process.env.CONTRACT_ADDRESS) {
-        this.contract = new this.web3.eth.Contract(
-          contractABI.abi,
-          process.env.CONTRACT_ADDRESS
-        );
-        this.initialized = true;
-        console.log('✅ Blockchain service initialized');
-      } else {
-        console.log('⚠️ Contract address not set. Blockchain features limited.');
-      }
-      
+      this.contract = new this.web3.eth.Contract(contractABI.abi, contractAddress);
+      this.initialized = true;
+      console.log(`Blockchain service initialized at ${networkUrl}`);
       return true;
     } catch (error) {
-      console.error('❌ Blockchain initialization error:', error.message);
+      this.web3 = null;
+      this.contract = null;
+      this.account = null;
+      this.initialized = false;
+
+      const isConnectionRefused = typeof error?.message === 'string' && error.message.includes('ECONNREFUSED');
+      if (isConnectionRefused) {
+        console.warn(`Blockchain node not reachable at ${networkUrl}. Continuing without blockchain writes.`);
+      } else {
+        console.warn(`Blockchain initialization skipped: ${error.message}`);
+      }
+
       return false;
     }
   }
 
   async recordBloodUnit(bloodUnitId, bloodGroup, quantity, hospitalId) {
     if (!this.initialized) {
-      console.log('Blockchain not initialized, skipping record');
       return { success: false, message: 'Blockchain not initialized' };
     }
 
@@ -135,6 +161,7 @@ class BlockchainService {
     if (!this.web3) {
       return { success: false, message: 'Blockchain not initialized' };
     }
+
     try {
       const receipt = await this.web3.eth.getTransactionReceipt(transactionHash);
       return {
@@ -152,7 +179,7 @@ class BlockchainService {
   }
 }
 
-// Singleton instance
+// Singleton instance.
 const blockchainService = new BlockchainService();
 
 module.exports = blockchainService;

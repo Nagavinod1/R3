@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { adminAPI, userAPI } from '../services/api';
 import { 
   FiBell, FiX, FiAlertTriangle, FiDroplet, FiGrid, 
-  FiUserCheck, FiCheck, FiClock, FiExternalLink
+  FiUserCheck, FiClock, FiExternalLink
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -128,14 +128,17 @@ const NotificationDropdown = () => {
       // New blood request alerts (for admin and staff)
       socket.on('newBloodRequest', (data) => {
         if (isAdmin || isStaff) {
-          const priorityLabels = { 1: 'EMERGENCY', 2: 'High', 3: 'Normal', 4: 'Scheduled' };
           const priorityColors = { 1: '🔴', 2: '🟠', 3: '🟡', 4: '🟢' };
+          const priorityIcon = priorityColors[data.priority] || '🩸';
+          const requesterName = data.requestedBy?.name || 'Patient';
+          const patientSuffix = data.patientName ? ` for ${data.patientName}` : '';
+          const severityMap = { 1: 'critical', 2: 'high' };
           const newNotification = {
             _id: data.requestId || Date.now().toString(),
             type: 'blood',
-            title: `${priorityColors[data.priority] || '🩸'} Blood Request: ${data.bloodGroup}`,
-            message: `${data.unitsRequired} units of ${data.bloodGroup} requested by ${data.requestedBy?.name || 'Patient'}${data.patientName ? ` for ${data.patientName}` : ''}`,
-            severity: data.priority === 1 ? 'critical' : data.priority === 2 ? 'high' : 'normal',
+            title: `${priorityIcon} Blood Request: ${data.bloodGroup}`,
+            message: `${data.unitsRequired} units of ${data.bloodGroup} requested by ${requesterName}${patientSuffix}`,
+            severity: severityMap[data.priority] || 'normal',
             read: false,
             createdAt: new Date(),
             link: isAdmin ? '/admin/blood' : '/staff/blood-requests',
@@ -282,7 +285,7 @@ const NotificationDropdown = () => {
   };
 
   const getTimeAgo = (date) => {
-    const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+    const seconds = Math.floor((Date.now() - new Date(date)) / 1000);
     if (seconds < 60) return 'Just now';
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
@@ -330,17 +333,19 @@ const NotificationDropdown = () => {
 
           {/* Notifications List */}
           <div className="max-h-96 overflow-y-auto">
-            {loading ? (
+            {loading && (
               <div className="flex items-center justify-center py-8">
                 <div className="spinner w-6 h-6"></div>
               </div>
-            ) : notifications.length > 0 ? (
+            )}
+            {!loading && notifications.length > 0 && (
               notifications.slice(0, 10).map((notification) => (
-                <div
+                <button
+                  type="button"
                   key={notification._id}
                   onClick={() => handleNotificationClick(notification)}
-                  className={`flex items-start space-x-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition-colors ${
-                    !notification.read ? 'bg-blue-50/50' : ''
+                  className={`flex items-start space-x-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition-colors w-full text-left ${
+                    notification.read ? '' : 'bg-blue-50/50'
                   }`}
                 >
                   <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
@@ -348,7 +353,7 @@ const NotificationDropdown = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <p className={`text-sm font-medium ${!notification.read ? 'text-gray-900' : 'text-gray-700'}`}>
+                      <p className={`text-sm font-medium ${notification.read ? 'text-gray-700' : 'text-gray-900'}`}>
                         {notification.title}
                       </p>
                       {!notification.read && (
@@ -361,9 +366,10 @@ const NotificationDropdown = () => {
                       <span className="text-xs text-gray-400">{getTimeAgo(notification.createdAt)}</span>
                     </div>
                   </div>
-                </div>
+                </button>
               ))
-            ) : (
+            )}
+            {!loading && notifications.length === 0 && (
               <div className="flex flex-col items-center justify-center py-8 text-gray-500">
                 <FiBell size={32} className="mb-2 text-gray-300" />
                 <p className="text-sm">No notifications</p>

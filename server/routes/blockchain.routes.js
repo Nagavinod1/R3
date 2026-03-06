@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect, authorize } = require('../middleware/auth');
+const { protect, authorize, checkApproval } = require('../middleware/auth');
 const BlockchainTransaction = require('../models/BlockchainTransaction');
 const blockchainService = require('../config/blockchain');
 
@@ -42,7 +42,7 @@ router.get('/status', async (req, res) => {
 // @route   GET /api/blockchain/transactions
 // @desc    Get blockchain transactions
 // @access  Staff/Admin
-router.get('/transactions', protect, authorize('staff', 'admin'), async (req, res) => {
+router.get('/transactions', protect, authorize('staff', 'admin'), checkApproval, async (req, res) => {
   try {
     const { entityType, entityId, hospitalId, limit = 50 } = req.query;
     let query = {};
@@ -55,7 +55,7 @@ router.get('/transactions', protect, authorize('staff', 'admin'), async (req, re
       .populate('hospital', 'name')
       .populate('performedBy', 'name')
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit));
+      .limit(Number.parseInt(limit, 10));
 
     res.json({
       success: true,
@@ -106,7 +106,7 @@ router.get('/verify/:transactionHash', async (req, res) => {
 // @route   GET /api/blockchain/history/:entityType/:entityId
 // @desc    Get blockchain history for an entity
 // @access  Staff/Admin
-router.get('/history/:entityType/:entityId', protect, authorize('staff', 'admin'), async (req, res) => {
+router.get('/history/:entityType/:entityId', protect, authorize('staff', 'admin'), checkApproval, async (req, res) => {
   try {
     const { entityType, entityId } = req.params;
 

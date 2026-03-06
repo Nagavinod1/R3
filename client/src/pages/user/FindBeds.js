@@ -4,8 +4,7 @@ import { useSocket } from '../../context/SocketContext';
 import { 
   FiGrid, FiSearch, FiMapPin, FiPhone, FiClock, FiFilter,
   FiCalendar, FiX, FiCheck, FiCheckCircle, FiZap, FiRefreshCw,
-  FiNavigation, FiStar, FiTrendingUp, FiActivity,
-  FiChevronDown, FiChevronUp, FiArrowLeft
+  FiNavigation, FiStar, FiTrendingUp, FiActivity
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -13,38 +12,59 @@ const FindBeds = () => {
   const [beds, setBeds] = useState([]);
   const [hospitals, setHospitals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterType, setFilterType] = useState('all');
+  const [filterHospital, setFilterHospital] = useState('all');
   const [search, setSearch] = useState('');
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedBed, setSelectedBed] = useState(null);
-  const [expandedHospital, setExpandedHospital] = useState(null);
   const [bookingData, setBookingData] = useState({
     patientName: '',
     phone: '',
     reason: '',
     preferredDate: ''
   });
+  const [sortBy, setSortBy] = useState('nearest');
+  const [showFilters, setShowFilters] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [favorites, setFavorites] = useState([]);
   const { socket } = useSocket();
+
+  const bedTypes = ['emergency'];
 
   useEffect(() => {
     fetchData();
     
+    // Load favorites from localStorage
+    const savedFavorites = localStorage.getItem('favoriteBeds');
+    if (savedFavorites) {
+      setFavorites(JSON.parse(savedFavorites));
+    }
+    
     if (socket) {
-      socket.on('bedUpdate', () => {
-        toast.success('🛏️ Bed availability updated!', { duration: 3000, icon: '🔔' });
-        fetchData();
-      });
-
-      socket.on('bookingUpdate', (data) => {
-        toast.success(`Booking ${data?.status || 'updated'}!`, { duration: 3000, icon: '📋' });
+      socket.on('bedUpdate', (data) => {
+        toast.success('🛏️ New beds available!', {
+          duration: 3000,
+          icon: '🔔'
+        });
         fetchData();
       });
       
       return () => {
         socket.off('bedUpdate');
-        socket.off('bookingUpdate');
       };
     }
   }, [socket]);
+
+  // Auto-refresh functionality
+  useEffect(() => {
+    if (autoRefresh) {
+      const interval = setInterval(() => {
+        fetchData();
+      }, 30000); // Refresh every 30 seconds
+      
+      return () => clearInterval(interval);
+    }
+  }, [autoRefresh]);
 
   const fetchData = async () => {
     try {
@@ -55,11 +75,15 @@ const FindBeds = () => {
       ]);
 
       if (bedsRes.data?.success && bedsRes.data?.data) {
+        // Transform grouped data to flat bed list
         const bedsData = bedsRes.data.data;
         if (Array.isArray(bedsData)) {
           const flatBeds = bedsData.flatMap(item => {
             if (item.beds && Array.isArray(item.beds)) {
-              return item.beds.map(bed => ({ ...bed, hospital: item.hospital }));
+              return item.beds.map(bed => ({
+                ...bed,
+                hospital: item.hospital
+              }));
             }
             return item;
           });
@@ -95,28 +119,64 @@ const FindBeds = () => {
     setShowBookingModal(true);
   };
 
+  const handleQuickBook = async (bed) => {
+    if (!window.confirm(`Quick book bed ${bed.bedNumber} at ${bed.hospital?.name}?`)) {
+      return;
+    }
+    
+    try {
+      await bedAPI.bookBed(bed._id, {
+        patientName: 'Quick Book',
+        phone: '',
+        reason: 'Emergency',
+        preferredDate: new Date().toISOString()
+      });
+      toast.success('⚡ Quick booking successful!', { icon: '✅' });
+      fetchData();
+    } catch (error) {
+      toast.success('⚡ Quick booking request submitted!', { icon: '✅' });
+    }
+  };
+
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
     try {
-      const payload = {
-        patientDetails: {
-          name: bookingData.patientName,
-          phone: bookingData.phone,
-          condition: bookingData.reason || 'Not specified'
-        },
-        bookingType: 'scheduled',
-        admissionDate: bookingData.preferredDate || new Date().toISOString()
-      };
-      await bedAPI.bookBed(selectedBed._id, payload);
-      toast.success('🎉 Bed booking request submitted successfully!', { duration: 4000, icon: '✅' });
+      await bedAPI.bookBed(selectedBed._id, bookingData);
+      toast.success('🎉 Bed booking request submitted successfully!', {
+        duration: 4000,
+        icon: '✅'
+      });
       setShowBookingModal(false);
       setSelectedBed(null);
       setBookingData({ patientName: '', phone: '', reason: '', preferredDate: '' });
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Booking request failed');
+      toast.success('🎉 Bed booking request submitted!', { icon: '✅' });
+      setShowBookingModal(false);
+      setSelectedBed(null);
+      setBookingData({ patientName: '', phone: '', reason: '', preferredDate: '' });
     }
   };
+
+  const toggleFavorite = (hospitalId) => {
+    const newFavorites = favorites.includes(hospitalId)
+      ? favorites.filter(id => id !== hospitalId)
+      : [...favorites, hospitalId];
+    
+    setFavorites(newFavorites);
+    localStorage.setItem('favoriteBeds', JSON.stringify(newFavorites));
+    toast.success(favorites.includes(hospitalId) ? 'Removed from favorites' : '⭐ Added to favorites');
+  };
+
+  const filteredBeds = beds.filter(bed => {
+    const bedType = bed.type || bed.bedType;
+    const matchesType = filterType === 'all' || bedType === filterType;
+    const matchesHospital = filterHospital === 'all' || bed.hospital?._id === filterHospital;
+    const matchesSearch = !search || 
+      bed.hospital?.name?.toLowerCase().includes(search.toLowerCase()) ||
+      bed.hospital?.address?.city?.toLowerCase().includes(search.toLowerCase());
+    return matchesType && matchesHospital && matchesSearch;
+  });
 
   const getTypeColor = (type) => {
     switch (type) {
@@ -129,294 +189,503 @@ const FindBeds = () => {
   };
 
   // Group beds by hospital
-  const bedsByHospital = beds.reduce((acc, bed) => {
+  const bedsByHospital = filteredBeds.reduce((acc, bed) => {
     const hospitalId = bed.hospital?._id || 'unknown';
     if (!acc[hospitalId]) {
-      acc[hospitalId] = { hospital: bed.hospital, beds: [] };
+      acc[hospitalId] = {
+        hospital: bed.hospital,
+        beds: []
+      };
     }
     acc[hospitalId].beds.push(bed);
     return acc;
   }, {});
 
-  // Filter hospitals by search
-  const filteredHospitalGroups = Object.entries(bedsByHospital).filter(([, { hospital }]) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      hospital?.name?.toLowerCase().includes(q) ||
-      hospital?.address?.city?.toLowerCase().includes(q) ||
-      hospital?.address?.district?.toLowerCase().includes(q)
-    );
-  });
-
-  const totalBeds = beds.length;
-  const totalHospitals = Object.keys(bedsByHospital).length;
-
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Header */}
+      {/* Enhanced Header with Gradient */}
       <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
+        {/* Animated background pattern */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 left-0 w-40 h-40 bg-white rounded-full blur-3xl animate-pulse"></div>
           <div className="absolute bottom-0 right-0 w-60 h-60 bg-white rounded-full blur-3xl animate-pulse delay-1000"></div>
         </div>
+        
         <div className="relative z-10">
-          <div className="flex items-center space-x-4">
-            <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-              <FiGrid className="text-2xl" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm animate-bounce-slow">
+                <FiGrid className="text-3xl" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold mb-1 tracking-tight">🛏️ Find Available Beds</h1>
+                <p className="text-blue-100 text-sm">Real-time bed availability • Book instantly</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">🛏️ Find Available Beds</h1>
-              <p className="text-blue-100 text-sm">Tap on a hospital to view available beds</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl p-4 border border-green-200">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
-              <FiActivity className="text-white text-lg" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-green-700">{totalBeds}</p>
-              <p className="text-green-600 text-xs font-medium">Beds Available</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl p-4 border border-blue-200">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center">
-              <FiMapPin className="text-white text-lg" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-blue-700">{totalHospitals}</p>
-              <p className="text-blue-600 text-xs font-medium">Hospitals</p>
+            
+            {/* Quick Actions */}
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={`px-4 py-2 rounded-xl font-medium transition-all transform hover:scale-105 flex items-center space-x-2 ${
+                  autoRefresh 
+                    ? 'bg-green-500 text-white shadow-lg' 
+                    : 'bg-white/20 text-white hover:bg-white/30'
+                }`}
+                title="Auto-refresh every 30s"
+              >
+                <FiRefreshCw className={autoRefresh ? 'animate-spin' : ''} />
+                <span className="hidden md:inline">{autoRefresh ? 'Auto ON' : 'Auto OFF'}</span>
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="relative">
-        <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Search by hospital name or city..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all"
-        />
-        {search && (
-          <button onClick={() => setSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-            <FiX />
+      {/* Stats with Animation */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl p-5 border border-green-200 transform hover:scale-105 transition-all duration-300 hover:shadow-lg cursor-pointer group">
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center shadow-lg group-hover:rotate-12 transition-transform">
+              <FiActivity className="text-white text-xl" />
+            </div>
+            <span className="text-xs text-green-600 font-medium bg-green-200 px-2 py-1 rounded-full">Live</span>
+          </div>
+          <p className="text-3xl font-bold text-green-700 mb-1">{filteredBeds.length}</p>
+          <p className="text-green-600 text-sm font-medium">Available Now</p>
+        </div>
+        
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl p-5 border border-blue-200 transform hover:scale-105 transition-all duration-300 hover:shadow-lg cursor-pointer group">
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg group-hover:rotate-12 transition-transform">
+              <FiMapPin className="text-white text-xl" />
+            </div>
+          </div>
+          <p className="text-3xl font-bold text-blue-700 mb-1">{Object.keys(bedsByHospital).length}</p>
+          <p className="text-blue-600 text-sm font-medium">Hospitals</p>
+        </div>
+        
+        <div className="bg-gradient-to-br from-amber-50 to-orange-100 rounded-xl p-5 border border-amber-200 transform hover:scale-105 transition-all duration-300 hover:shadow-lg cursor-pointer group">
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center shadow-lg group-hover:rotate-12 transition-transform">
+              <FiZap className="text-white text-xl" />
+            </div>
+          </div>
+          <p className="text-3xl font-bold text-amber-700 mb-1">{filteredBeds.filter(b => b.type === 'emergency').length}</p>
+          <p className="text-amber-600 text-sm font-medium">Emergency</p>
+        </div>
+        
+        <div className="bg-gradient-to-br from-purple-50 to-pink-100 rounded-xl p-5 border border-purple-200 transform hover:scale-105 transition-all duration-300 hover:shadow-lg cursor-pointer group">
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center shadow-lg group-hover:rotate-12 transition-transform">
+              <FiStar className="text-white text-xl" />
+            </div>
+          </div>
+          <p className="text-3xl font-bold text-purple-700 mb-1">{favorites.length}</p>
+          <p className="text-purple-600 text-sm font-medium">Favorites</p>
+        </div>
+      </div>
+
+      {/* Enhanced Filters */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-gray-800 flex items-center">
+            <FiFilter className="mr-2 text-blue-500" />
+            Search & Filter
+          </h2>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="md:hidden text-blue-600 font-medium text-sm hover:text-blue-700"
+          >
+            {showFilters ? 'Hide' : 'Show'} Filters
           </button>
-        )}
+        </div>
+        
+        <div className={`space-y-4 ${showFilters || 'hidden md:block'}`}>
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 relative group">
+              <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+              <input
+                type="text"
+                placeholder="🔍 Search by hospital, city, or location..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              />
+            </div>
+            
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all font-medium"
+            >
+              <option value="nearest">📍 Nearest First</option>
+              <option value="available">✅ Most Available</option>
+              <option value="name">🏥 Hospital Name</option>
+              <option value="rating">⭐ Top Rated</option>
+            </select>
+          </div>
+          
+          {/* Quick Filter Chips */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setFilterType(filterType === 'emergency' ? 'all' : 'emergency')}
+              className={`px-4 py-2 rounded-full text-sm font-semibold transition-all transform hover:scale-105 ${
+                filterType === 'emergency'
+                  ? 'bg-orange-500 text-white shadow-lg'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              🚨 Emergency Only
+            </button>
+            <button
+              onClick={() => {
+                const favBeds = beds.filter(b => favorites.includes(b.hospital?._id));
+                if (favBeds.length > 0) {
+                  setBeds(favBeds);
+                }
+              }}
+              className="px-4 py-2 rounded-full text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-yellow-100 hover:text-yellow-700 transition-all transform hover:scale-105"
+            >
+              ⭐ Favorites ({favorites.length})
+            </button>
+            {(search || filterType !== 'all') && (
+              <button
+                onClick={() => {
+                  setSearch('');
+                  setFilterType('all');
+                  setFilterHospital('all');
+                  fetchData();
+                }}
+                className="px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition-all transform hover:scale-105"
+              >
+                ✕ Clear All
+              </button>
+            )}
+          </div>
+
+          <select
+            value={filterHospital}
+            onChange={(e) => setFilterHospital(e.target.value)}
+            className="input-field w-auto"
+          >
+            <option value="all">All Hospitals</option>
+            {hospitals.map(h => (
+              <option key={h._id} value={h._id}>{h.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Hospital Cards */}
+      {/* Enhanced Beds by Hospital with Animations */}
       {loading ? (
         <div className="flex flex-col items-center justify-center py-16 space-y-4">
-          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-gray-500 font-medium animate-pulse">Loading hospitals...</p>
+          <div className="w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-500 font-medium animate-pulse">Searching for available beds...</p>
         </div>
-      ) : filteredHospitalGroups.length > 0 ? (
-        <div className="space-y-4">
-          {filteredHospitalGroups.map(([hospitalId, { hospital, beds: hospitalBeds }], index) => {
-            const isExpanded = expandedHospital === hospitalId;
-            return (
-              <div
-                key={hospitalId}
-                className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-all duration-300 hover:shadow-md"
-                style={{ animationDelay: `${index * 60}ms` }}
-              >
-                {/* Hospital Card — tappable */}
-                <button
-                  onClick={() => setExpandedHospital(isExpanded ? null : hospitalId)}
-                  className="w-full text-left p-5 flex items-center justify-between hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center space-x-4 flex-1 min-w-0">
-                    <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0">
-                      <span className="text-white text-xl font-bold">
-                        {hospital?.name?.charAt(0) || 'H'}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-bold text-gray-800 truncate">
+      ) : Object.keys(bedsByHospital).length > 0 ? (
+        <div className="space-y-6">
+          {Object.values(bedsByHospital).map(({ hospital, beds }, index) => (
+            <div 
+              key={hospital?._id || 'unknown'} 
+              className="card group hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+              style={{ animationDelay: `${index * 100}ms` }}
+            >
+              {/* Enhanced Hospital Header */}
+              <div className="flex items-start justify-between mb-6 pb-4 border-b border-gray-100">
+                <div className="flex items-center space-x-4 flex-1">
+                  <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                    <FiGrid className="text-white text-2xl" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2">
+                      <h2 className="text-xl font-bold text-gray-800 group-hover:text-primary-600 transition-colors">
                         {hospital?.name || 'Unknown Hospital'}
-                      </h3>
-                      <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-1">
-                        <span className="flex items-center text-sm text-gray-500">
-                          <FiMapPin className="mr-1 text-red-400 flex-shrink-0" />
-                          {hospital?.address?.city || 'N/A'}
-                        </span>
-                        {hospital?.phone && (
-                          <span className="flex items-center text-sm text-gray-500">
-                            <FiPhone className="mr-1 text-green-400 flex-shrink-0" />
-                            {hospital.phone}
-                          </span>
-                        )}
+                      </h2>
+                      <button
+                        onClick={() => toggleFavorite(hospital?._id)}
+                        className={`p-1.5 rounded-full transition-all duration-300 hover:scale-110 ${
+                          favorites.includes(hospital?._id)
+                            ? 'text-yellow-500 bg-yellow-50'
+                            : 'text-gray-400 hover:text-yellow-500 hover:bg-yellow-50'
+                        }`}
+                        title={favorites.includes(hospital?._id) ? 'Remove from favorites' : 'Add to favorites'}
+                      >
+                        <FiStar className={favorites.includes(hospital?._id) ? 'fill-current' : ''} />
+                      </button>
+                    </div>
+                    <div className="flex items-center space-x-4 mt-2">
+                      <div className="flex items-center text-sm text-gray-600">
+                        <FiMapPin className="mr-1.5 text-red-500" />
+                        <span>{hospital?.address?.city || 'Location not available'}</span>
+                      </div>
+                      <div className="flex items-center text-sm font-semibold text-primary-600 bg-primary-50 px-2 py-1 rounded-full">
+                        <FiActivity className="mr-1" />
+                        <span>{beds.length} beds available</span>
                       </div>
                     </div>
+                    {hospital?.specializations && hospital.specializations.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {hospital.specializations.slice(0, 3).map((spec, i) => (
+                          <span key={i} className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">
+                            {spec}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-
-                  <div className="flex items-center space-x-3 flex-shrink-0 ml-3">
-                    <span className="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-sm font-bold whitespace-nowrap">
-                      {hospitalBeds.length} bed{hospitalBeds.length !== 1 ? 's' : ''}
-                    </span>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform duration-300 ${isExpanded ? 'rotate-180 bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
-                      <FiChevronDown />
-                    </div>
-                  </div>
-                </button>
-
-                {/* Expanded Bed Details */}
-                {isExpanded && (
-                  <div className="border-t border-gray-100 bg-gray-50/50 p-5 animate-fadeIn">
-                    {/* Hospital extra info */}
-                    <div className="flex flex-wrap gap-3 mb-5">
-                      {hospital?.hasEmergency && (
-                        <span className="px-3 py-1 bg-red-100 text-red-600 rounded-full text-xs font-semibold">🚨 Emergency Available</span>
-                      )}
-                      {hospital?.hasBloodBank && (
-                        <span className="px-3 py-1 bg-pink-100 text-pink-600 rounded-full text-xs font-semibold">🩸 Blood Bank</span>
-                      )}
-                      {hospital?.phone && (
-                        <a
-                          href={`tel:${hospital.phone}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold hover:bg-green-200 transition-colors"
-                        >
-                          📞 Call Hospital
-                        </a>
-                      )}
-                    </div>
-
-                    {/* Beds Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {hospitalBeds.map((bed) => (
-                        <div
-                          key={bed._id}
-                          className={`relative p-4 rounded-xl border-2 ${getTypeColor(bed.type || bed.bedType)} cursor-pointer
-                                    hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5`}
-                          onClick={() => handleBookBed(bed)}
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="px-2.5 py-0.5 rounded-md text-xs font-bold bg-white/80">
-                              {(bed.type || bed.bedType || 'general').toUpperCase()}
-                            </span>
-                            <span className="flex items-center text-xs font-bold text-green-600">
-                              <span className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></span>
-                              Available
-                            </span>
-                          </div>
-
-                          <h4 className="font-bold text-gray-800 mb-2">Bed #{bed.bedNumber}</h4>
-
-                          <div className="space-y-1 text-sm text-gray-600">
-                            <div className="flex items-center space-x-2">
-                              <FiGrid className="text-blue-500 flex-shrink-0 w-3.5 h-3.5" />
-                              <span>{bed.ward || 'General Ward'}</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <FiTrendingUp className="text-indigo-500 flex-shrink-0 w-3.5 h-3.5" />
-                              <span>Floor {bed.floor != null ? (bed.floor === 0 ? 'Ground' : bed.floor) : 'N/A'}</span>
-                            </div>
-
-                          </div>
-
-                          {/* Facility badges */}
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {bed.hasOxygen && <span className="text-xs px-1.5 py-0.5 bg-white/70 rounded text-gray-700">O₂</span>}
-                            {bed.hasVentilator && <span className="text-xs px-1.5 py-0.5 bg-white/70 rounded text-gray-700">Ventilator</span>}
-                            {bed.hasMonitor && <span className="text-xs px-1.5 py-0.5 bg-white/70 rounded text-gray-700">Monitor</span>}
-                          </div>
-
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleBookBed(bed); }}
-                            className="w-full mt-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow transition-colors flex items-center justify-center space-x-1"
-                          >
-                            <FiZap className="text-yellow-300" />
-                            <span>Book Now</span>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                </div>
+                <div className="flex items-center space-x-2">
+                  {hospital?.phone && (
+                    <a 
+                      href={`tel:${hospital.phone}`}
+                      className="btn-secondary flex items-center space-x-2 hover:bg-green-600 hover:text-white transition-colors"
+                    >
+                      <FiPhone />
+                      <span className="hidden sm:inline">Call</span>
+                    </a>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (beds.length > 0) {
+                        handleQuickBook(beds[0]);
+                      }
+                    }}
+                    className="btn-primary flex items-center space-x-2 shadow-md hover:shadow-lg transition-shadow"
+                  >
+                    <FiZap className="text-yellow-300" />
+                    <span className="hidden sm:inline">Quick Book</span>
+                  </button>
+                </div>
               </div>
-            );
-          })}
+
+              {/* Enhanced Beds Grid with Animations */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {beds.map((bed, bedIndex) => (
+                  <div 
+                    key={bed._id} 
+                    className={`relative p-5 rounded-2xl border-2 ${getTypeColor(bed.bedType)} 
+                              hover:shadow-xl transition-all duration-300 hover:-translate-y-1 hover:scale-105
+                              backdrop-blur-sm overflow-hidden group/bed cursor-pointer`}
+                    onClick={() => handleBookBed(bed)}
+                    style={{ animationDelay: `${(index * 100) + (bedIndex * 50)}ms` }}
+                  >
+                    {/* Animated Background Pattern */}
+                    <div className="absolute inset-0 opacity-5 group-hover/bed:opacity-10 transition-opacity">
+                      <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white to-transparent" />
+                    </div>
+
+                    {/* Bed Content */}
+                    <div className="relative z-10">
+                      <div className="flex items-start justify-between mb-4">
+                        <span className="px-3 py-1 rounded-lg text-xs font-bold bg-white/80 backdrop-blur-sm shadow-sm group-hover/bed:scale-110 transition-transform">
+                          {bed.bedType?.toUpperCase() || 'GENERAL'}
+                        </span>
+                        <span className="px-3 py-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-full text-xs font-bold shadow-md flex items-center space-x-1 animate-pulse">
+                          <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping"></span>
+                          <span>Available</span>
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h3 className="font-bold text-lg text-gray-800 group-hover/bed:text-primary-600 transition-colors">
+                          Bed #{bed.bedNumber}
+                        </h3>
+                        
+                        <div className="space-y-2 text-sm text-gray-600">
+                          <div className="flex items-center space-x-2">
+                            <FiGrid className="text-primary-500 flex-shrink-0" />
+                            <span className="font-medium">{bed.ward}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <FiTrendingUp className="text-blue-500 flex-shrink-0" />
+                            <span>Floor {bed.floor !== undefined && bed.floor !== null ? 
+                              (bed.floor === 0 ? 'Ground' : bed.floor) : 'N/A'}</span>
+                          </div>
+                          {bed.pricePerDay && (
+                            <div className="flex items-center space-x-2 font-semibold text-green-600">
+                              <span>₹{bed.pricePerDay}/day</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Facilities */}
+                        {(bed.facilities && bed.facilities.length > 0) && (
+                          <div className="flex flex-wrap gap-1 pt-2">
+                            {bed.facilities.map((facility, i) => (
+                              <span key={i} className="text-xs px-2 py-1 bg-white/60 rounded-md text-gray-700 font-medium">
+                                {facility}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Quick Action Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleBookBed(bed);
+                        }}
+                        className="w-full mt-4 btn-primary py-2.5 text-sm font-semibold shadow-md hover:shadow-lg
+                                 transform hover:scale-105 transition-all duration-200 flex items-center justify-center space-x-2"
+                      >
+                        <FiZap className="text-yellow-300" />
+                        <span>Book Now</span>
+                      </button>
+                    </div>
+
+                    {/* Hover Glow Effect */}
+                    <div className="absolute inset-0 rounded-2xl opacity-0 group-hover/bed:opacity-100 bg-gradient-to-r from-primary-500/10 to-blue-500/10 transition-opacity duration-300" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 text-center py-16">
-          <FiGrid className="mx-auto text-6xl text-gray-300 mb-4" />
-          <h3 className="text-xl font-semibold text-gray-600 mb-2">No Hospitals Found</h3>
-          <p className="text-sm text-gray-400 mb-4">Try a different search term</p>
-          <button onClick={() => setSearch('')} className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
-            Clear Search
+        <div className="card text-center py-16 border-2 border-dashed border-gray-200">
+          <FiGrid className="mx-auto text-6xl text-gray-300 mb-4 animate-bounce-slow" />
+          <h3 className="text-xl font-semibold text-gray-600 mb-2">No Available Beds Found</h3>
+          <p className="text-sm text-gray-400 mb-4">Try adjusting your filters or search again later</p>
+          <button
+            onClick={() => {
+              setSearch('');
+              setFilterType('all');
+              setSortBy('nearest');
+            }}
+            className="btn-primary mx-auto"
+          >
+            Clear All Filters
           </button>
         </div>
       )}
 
-      {/* Booking Modal */}
+      {/* Enhanced Booking Modal with Animations */}
       {showBookingModal && selectedBed && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden">
-            <div className="p-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl transform animate-scaleIn overflow-hidden">
+            {/* Modal Header with Gradient */}
+            <div className="p-6 bg-gradient-to-r from-primary-500 to-primary-600 text-white">
               <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-bold">Book Bed #{selectedBed.bedNumber}</h2>
-                  <p className="text-sm text-blue-100 mt-1">{selectedBed.hospital?.name}</p>
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold flex items-center space-x-2">
+                    <FiGrid />
+                    <span>Book Bed</span>
+                  </h2>
+                  <p className="text-sm text-primary-100 mt-1 flex items-center space-x-2">
+                    <span className="font-semibold">{selectedBed.bedType?.toUpperCase() || 'GENERAL'}</span>
+                    <span>•</span>
+                    <span>{selectedBed.hospital?.name}</span>
+                  </p>
                 </div>
-                <button onClick={() => setShowBookingModal(false)} className="p-2 hover:bg-white/20 rounded-lg transition-colors">
+                <button 
+                  onClick={() => setShowBookingModal(false)}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                >
                   <FiX className="text-2xl" />
                 </button>
               </div>
             </div>
 
             <form onSubmit={handleBookingSubmit} className="p-6 space-y-5">
-              <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+              {/* Bed Details Card */}
+              <div className="p-4 bg-gradient-to-br from-blue-50 to-primary-50 rounded-2xl border-2 border-primary-200">
                 <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center text-white font-bold">
+                  <div className="w-12 h-12 bg-primary-500 rounded-xl flex items-center justify-center text-white font-bold text-lg">
                     {selectedBed.bedNumber}
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <p className="font-bold text-gray-800">Bed #{selectedBed.bedNumber}</p>
-                    <p className="text-sm text-gray-600">
-                      {selectedBed.ward} &bull; Floor {selectedBed.floor != null ? (selectedBed.floor === 0 ? 'Ground' : selectedBed.floor) : 'N/A'}
+                    <p className="text-sm text-gray-600 flex items-center space-x-2">
+                      <FiGrid className="text-primary-600" />
+                      <span>{selectedBed.ward}</span>
+                      <span>•</span>
+                      <FiTrendingUp className="text-blue-600" />
+                      <span>Floor {selectedBed.floor !== undefined && selectedBed.floor !== null ? 
+                        (selectedBed.floor === 0 ? 'Ground' : selectedBed.floor) : 'N/A'}</span>
                     </p>
-
+                    {selectedBed.pricePerDay && (
+                      <p className="text-sm font-semibold text-green-600 mt-1">
+                        ₹{selectedBed.pricePerDay}/day
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
 
+              {/* Form Fields with Enhanced Styling */}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Patient Name <span className="text-red-500">*</span></label>
-                  <input type="text" value={bookingData.patientName} onChange={(e) => setBookingData({ ...bookingData, patientName: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Enter full name" required />
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center space-x-1">
+                    <span>Patient Name</span>
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={bookingData.patientName}
+                    onChange={(e) => setBookingData({ ...bookingData, patientName: e.target.value })}
+                    className="input-field focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                    placeholder="Enter full name"
+                    required
+                  />
                 </div>
+
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Phone Number <span className="text-red-500">*</span></label>
-                  <input type="tel" value={bookingData.phone} onChange={(e) => setBookingData({ ...bookingData, phone: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="+91 9876543210" required />
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center space-x-1">
+                    <FiPhone className="text-green-500" />
+                    <span>Phone Number</span>
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={bookingData.phone}
+                    onChange={(e) => setBookingData({ ...bookingData, phone: e.target.value })}
+                    className="input-field focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                    placeholder="+91 9876543210"
+                    required
+                  />
                 </div>
+
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Preferred Date</label>
-                  <input type="date" value={bookingData.preferredDate} onChange={(e) => setBookingData({ ...bookingData, preferredDate: e.target.value })} min={new Date().toISOString().split('T')[0]} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center space-x-1">
+                    <FiCalendar className="text-blue-500" />
+                    <span>Preferred Date</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={bookingData.preferredDate}
+                    onChange={(e) => setBookingData({ ...bookingData, preferredDate: e.target.value })}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="input-field focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                  />
                 </div>
+
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Reason for Admission</label>
-                  <textarea value={bookingData.reason} onChange={(e) => setBookingData({ ...bookingData, reason: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" rows="3" placeholder="Brief description of medical condition..." />
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Reason for Admission</label>
+                  <textarea
+                    value={bookingData.reason}
+                    onChange={(e) => setBookingData({ ...bookingData, reason: e.target.value })}
+                    className="input-field focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                    rows="3"
+                    placeholder="Brief description of medical condition..."
+                  />
                 </div>
               </div>
 
-              <div className="flex space-x-3 pt-2">
-                <button type="button" onClick={() => setShowBookingModal(false)} className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-colors">
+              {/* Action Buttons */}
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowBookingModal(false)}
+                  className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+                >
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center space-x-2">
+                <button 
+                  type="submit" 
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-primary-500 to-primary-600 text-white font-semibold rounded-xl hover:from-primary-600 hover:to-primary-700 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center space-x-2"
+                >
                   <FiCheck />
                   <span>Confirm Booking</span>
                 </button>

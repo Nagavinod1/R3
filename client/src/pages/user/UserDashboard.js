@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { bedAPI, bloodAPI, hospitalAPI } from '../../services/api';
+import { bedAPI, bloodAPI, hospitalAPI, userAPI } from '../../services/api';
 import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -46,17 +46,20 @@ const UserDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const [bedsRes, bloodRes, hospitalsRes] = await Promise.all([
+      const [bedsRes, bloodRes, hospitalsRes, userDashRes] = await Promise.all([
         bedAPI.getAvailableBeds().catch(() => ({ data: { data: [] } })),
         bloodAPI.getBloodStats().catch(() => ({ data: { data: [] } })),
-        hospitalAPI.getHospitals().catch(() => ({ data: { data: [] } }))
+        hospitalAPI.getHospitals().catch(() => ({ data: { data: [] } })),
+        userAPI.getDashboard().catch(() => ({ data: { data: null } }))
       ]);
 
-      // Available beds
+      // Available beds - flatten grouped hospital data into individual beds
       if (bedsRes.data?.data) {
-        setAvailableBeds(Array.isArray(bedsRes.data.data) 
-          ? bedsRes.data.data.slice(0, 5) 
-          : []);
+        const groups = Array.isArray(bedsRes.data.data) ? bedsRes.data.data : [];
+        const flatBeds = groups.flatMap(group => 
+          (group.beds || []).map(bed => ({ ...bed, hospital: group.hospital }))
+        );
+        setAvailableBeds(flatBeds.slice(0, 5));
       }
 
       // Blood availability
@@ -66,6 +69,11 @@ const UserDashboard = () => {
           bloodGroup: bg, 
           count: Math.floor(Math.random() * 50) + 10,
           available: Math.random() > 0.2
+        }));
+      } else {
+        bloodData = bloodData.map(b => ({
+          ...b,
+          count: b.count || b.units || 0
         }));
       }
       setBloodAvailability(bloodData);
@@ -77,11 +85,34 @@ const UserDashboard = () => {
           : []);
       }
 
-      // Mock user's requests
-      setMyRequests([
-        { id: 1, type: 'blood', bloodGroup: 'O+', status: 'pending', date: '2024-01-15' },
-        { id: 2, type: 'bed', bedType: 'general', hospital: 'City Hospital', status: 'confirmed', date: '2024-01-10' }
-      ]);
+      // User's real requests
+      if (userDashRes.data?.data) {
+        const dashData = userDashRes.data.data;
+        const requests = [];
+        if (dashData.bloodRequests) {
+          dashData.bloodRequests.forEach(r => requests.push({
+            id: r._id,
+            type: 'blood',
+            bloodGroup: r.bloodGroup,
+            status: r.status,
+            date: new Date(r.createdAt).toLocaleDateString(),
+            hospital: r.hospital?.name
+          }));
+        }
+        if (dashData.bedBookings) {
+          dashData.bedBookings.forEach(b => requests.push({
+            id: b._id,
+            type: 'bed',
+            bedType: b.bed?.type || 'general',
+            hospital: b.hospital?.name,
+            status: b.status,
+            date: new Date(b.createdAt).toLocaleDateString()
+          }));
+        }
+        setMyRequests(requests);
+      } else {
+        setMyRequests([]);
+      }
 
     } catch (error) {
       console.error('Error fetching dashboard:', error);
@@ -218,17 +249,17 @@ const UserDashboard = () => {
                 <div key={bed._id || index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center space-x-3">
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      bed.bedType === 'icu' ? 'bg-red-100' :
-                      bed.bedType === 'emergency' ? 'bg-orange-100' : 'bg-blue-100'
+                      bed.type === 'ICU' ? 'bg-red-100' :
+                      bed.type === 'emergency' ? 'bg-orange-100' : 'bg-blue-100'
                     }`}>
                       <FiGrid className={`${
-                        bed.bedType === 'icu' ? 'text-red-600' :
-                        bed.bedType === 'emergency' ? 'text-orange-600' : 'text-blue-600'
+                        bed.type === 'ICU' ? 'text-red-600' :
+                        bed.type === 'emergency' ? 'text-orange-600' : 'text-blue-600'
                       }`} />
                     </div>
                     <div>
                       <p className="font-medium text-gray-800">
-                        {bed.bedType?.charAt(0).toUpperCase() + bed.bedType?.slice(1)} Bed
+                        {bed.type?.charAt(0).toUpperCase() + bed.type?.slice(1)} Bed
                       </p>
                       <p className="text-sm text-gray-500">{bed.hospital?.name || 'Hospital'}</p>
                     </div>

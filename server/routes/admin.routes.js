@@ -27,7 +27,9 @@ router.get('/dashboard', async (req, res) => {
       pendingStaff,
       bloodRequestsCount,
       bedBookingsCount,
-      activeAlerts
+      activeAlerts,
+      totalBeds,
+      availableBeds
     ] = await Promise.all([
       User.countDocuments({ role: 'user' }),
       User.countDocuments({ role: 'staff' }),
@@ -36,11 +38,17 @@ router.get('/dashboard', async (req, res) => {
       User.countDocuments({ role: 'staff', isApproved: false }),
       BloodRequest.countDocuments({ status: 'pending' }),
       BedBooking.countDocuments({ status: 'pending' }),
-      EmergencyAlert.countDocuments({ status: { $in: ['active', 'acknowledged'] } })
+      EmergencyAlert.countDocuments({ status: { $in: ['active', 'acknowledged'] } }),
+      Bed.countDocuments(),
+      Bed.countDocuments({ status: 'available', isAvailable: true })
     ]);
 
     // Get blood inventory summary
-    const bloodInventory = await BloodUnit.getInventorySummary();
+    const bloodInventoryRaw = await BloodUnit.getInventorySummary();
+    const bloodInventory = {
+      totalUnits: bloodInventoryRaw.reduce((sum, item) => sum + (item.totalUnits || 0), 0),
+      byGroup: bloodInventoryRaw
+    };
 
     // Get district-wise hospital distribution
     const hospitalDistribution = await Hospital.aggregate([
@@ -88,7 +96,9 @@ router.get('/dashboard', async (req, res) => {
           pendingStaff,
           bloodRequestsCount,
           bedBookingsCount,
-          activeAlerts
+          activeAlerts,
+          totalBeds,
+          availableBeds
         },
         bloodInventory,
         hospitalDistribution,
@@ -113,8 +123,8 @@ router.get('/dashboard', async (req, res) => {
 // @access  Admin
 router.get('/users', async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const page = Number.parseInt(req.query.page, 10) || 1;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
     const skip = (page - 1) * limit;
     const { role, isApproved, search } = req.query;
 
@@ -267,8 +277,8 @@ router.delete('/users/:id', async (req, res) => {
 // @access  Admin
 router.get('/staff', async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const page = Number.parseInt(req.query.page, 10) || 1;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
     const skip = (page - 1) * limit;
     const { isApproved, search } = req.query;
 
@@ -366,8 +376,8 @@ router.post('/staff', async (req, res) => {
 // @access  Admin
 router.get('/hospitals', async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const page = Number.parseInt(req.query.page, 10) || 1;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
     const skip = (page - 1) * limit;
     const { isApproved, search } = req.query;
 
@@ -686,4 +696,96 @@ router.get('/analytics/hospitals', async (req, res) => {
   }
 });
 
+// @route   GET /api/admin/blood-requests
+// @desc    Get all blood requests across system
+// @access  Admin
+router.get('/blood-requests', async (req, res) => {
+  try {
+    const page = Number.parseInt(req.query.page, 10) || 1;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+    const { status, bloodGroup, requestType } = req.query;
+
+    const query = {};
+    if (status) query.status = status;
+    if (bloodGroup) query.bloodGroup = bloodGroup;
+    if (requestType) query.requestType = requestType;
+
+    const [requests, total] = await Promise.all([
+      BloodRequest.find(query)
+        .populate('requestedBy', 'name email phone')
+        .populate('hospital', 'name address phone')
+        .populate('targetHospital', 'name address phone')
+        .populate('processedBy', 'name')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      BloodRequest.countDocuments(query)
+    ]);
+
+    res.json({
+      success: true,
+      data: requests,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching blood requests',
+      error: error.message
+    });
+  }
+});
+
+// @route   GET /api/admin/bed-bookings
+// @desc    Get all bed bookings across system
+// @access  Admin
+router.get('/bed-bookings', async (req, res) => {
+  try {
+    const page = Number.parseInt(req.query.page, 10) || 1;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+    const { status, bookingType } = req.query;
+
+    const query = {};
+    if (status) query.status = status;
+    if (bookingType) query.bookingType = bookingType;
+
+    const [bookings, total] = await Promise.all([
+      BedBooking.find(query)
+        .populate('bed', 'bedNumber ward type floor')
+        .populate('hospital', 'name address phone')
+        .populate('patient', 'name email phone')
+        .populate('processedBy', 'name')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      BedBooking.countDocuments(query)
+    ]);
+
+    res.json({
+      success: true,
+      data: bookings,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching bed bookings',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
+

@@ -6,7 +6,7 @@ import FloatingAIAssistant from '../components/FloatingAIAssistant';
 import NotificationDropdown from '../components/NotificationDropdown';
 import {
   FiHome, FiDroplet, FiInbox, FiGrid, FiUser,
-  FiLogOut, FiMenu, FiX, FiActivity
+  FiLogOut, FiMenu, FiX
 } from 'react-icons/fi';
 
 const StaffLayout = () => {
@@ -23,6 +23,7 @@ const StaffLayout = () => {
   const navItems = [
     { path: '/staff', icon: FiHome, label: 'Dashboard', exact: true },
     { path: '/staff/inventory', icon: FiDroplet, label: 'Blood Inventory' },
+    { path: '/staff/requests', icon: FiInbox, label: 'Blood Requests' },
     { path: '/staff/beds', icon: FiGrid, label: 'Bed Management' },
     { path: '/staff/profile', icon: FiUser, label: 'Profile' },
   ];

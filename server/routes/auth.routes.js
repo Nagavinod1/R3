@@ -10,6 +10,7 @@ const { validate, registerValidation, loginValidation } = require('../middleware
 router.post('/register', registerValidation, validate, async (req, res) => {
   try {
     const { name, email, password, phone, role, bloodGroup, address, hospital } = req.body;
+    const resolvedRole = role || 'user';
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -26,11 +27,11 @@ router.post('/register', registerValidation, validate, async (req, res) => {
       email,
       password,
       phone,
-      role: role || 'user',
+      role: resolvedRole,
       bloodGroup,
       address,
       hospital,
-      isApproved: role === 'user' ? true : false // Users auto-approved, staff needs approval
+      isApproved: resolvedRole === 'user' // Users auto-approved, staff needs approval
     });
 
     // Generate token
@@ -49,7 +50,7 @@ router.post('/register', registerValidation, validate, async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Registration successful' + (role === 'staff' ? '. Waiting for admin approval.' : ''),
+      message: 'Registration successful' + (resolvedRole === 'staff' ? '. Waiting for admin approval.' : ''),
       token,
       user: {
         id: user._id,
@@ -199,6 +200,39 @@ router.put('/password', protect, async (req, res) => {
     const user = await User.findById(req.user.id).select('+password');
 
     // Check current password
+    const isMatch = await user.matchPassword(currentPassword);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Current password is incorrect'
+      });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Password updated successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error updating password',
+      error: error.message
+    });
+  }
+});
+
+// @route   PUT /api/auth/change-password
+// @desc    Backward-compatible password update endpoint
+// @access  Private
+router.put('/change-password', protect, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    const user = await User.findById(req.user.id).select('+password');
+
     const isMatch = await user.matchPassword(currentPassword);
     if (!isMatch) {
       return res.status(401).json({

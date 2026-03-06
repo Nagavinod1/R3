@@ -6,12 +6,13 @@ const BloodUnit = require('../models/BloodUnit');
 const BloodRequest = require('../models/BloodRequest');
 const Hospital = require('../models/Hospital');
 const EmergencyAlert = require('../models/EmergencyAlert');
+const BlockchainTransaction = require('../models/BlockchainTransaction');
 const blockchainService = require('../config/blockchain');
 
 // @route   GET /api/blood/inventory
 // @desc    Get blood inventory (filterable by hospital)
 // @access  Private
-router.get('/inventory', protect, async (req, res) => {
+router.get('/inventory', protect, checkApproval, async (req, res) => {
   try {
     const { hospitalId, bloodGroup, status } = req.query;
     let query = {};
@@ -71,9 +72,11 @@ router.get('/summary', async (req, res) => {
 
     const formattedData = bloodGroups.map(group => {
       const found = inventory.find(i => i._id === group);
+      const unitCount = found ? found.totalUnits : 0;
       return {
         bloodGroup: group,
-        units: found ? found.totalUnits : 0
+        units: unitCount,
+        count: unitCount
       };
     });
 
@@ -149,6 +152,35 @@ router.post('/add', protect, authorize('staff', 'admin'), checkApproval, bloodUn
       bloodUnit.blockchainBlockNumber = blockchainResult.blockNumber;
       bloodUnit.history[0].blockchainTxHash = blockchainResult.transactionHash;
       await bloodUnit.save();
+
+      const previousTx = await BlockchainTransaction.findOne({
+        entityType: 'BloodUnit',
+        entityId: bloodUnit._id
+      }).sort({ createdAt: -1 });
+
+      await BlockchainTransaction.create({
+        transactionType: 'blood_unit_add',
+        entityType: 'BloodUnit',
+        entityId: bloodUnit._id,
+        transactionHash: blockchainResult.transactionHash,
+        blockNumber: blockchainResult.blockNumber,
+        status: 'confirmed',
+        data: {
+          bloodGroup,
+          quantity,
+          status: bloodUnit.status,
+          hospitalId: hospitalId.toString()
+        },
+        dataHash: blockchainService.generateHash({
+          bloodUnitId: bloodUnit._id.toString(),
+          bloodGroup,
+          quantity,
+          status: bloodUnit.status
+        }),
+        previousHash: previousTx?.dataHash || null,
+        hospital: bloodUnit.hospital,
+        performedBy: req.user._id
+      });
     }
 
     // Emit socket event
@@ -206,6 +238,54 @@ router.put('/:id', protect, authorize('staff', 'admin'), checkApproval, async (r
 
     await bloodUnit.save();
 
+    let blockchainResult = { success: false, message: 'Blockchain not initialized' };
+    blockchainResult = await blockchainService.recordBloodUnit(
+      bloodUnit._id.toString(),
+      bloodUnit.bloodGroup,
+      bloodUnit.quantity,
+      bloodUnit.hospital.toString()
+    );
+
+    if (blockchainResult.success) {
+      bloodUnit.blockchainTxHash = blockchainResult.transactionHash;
+      bloodUnit.blockchainBlockNumber = blockchainResult.blockNumber;
+
+      const latestHistoryIndex = bloodUnit.history.length - 1;
+      if (latestHistoryIndex >= 0) {
+        bloodUnit.history[latestHistoryIndex].blockchainTxHash = blockchainResult.transactionHash;
+      }
+      await bloodUnit.save();
+
+      const previousTx = await BlockchainTransaction.findOne({
+        entityType: 'BloodUnit',
+        entityId: bloodUnit._id
+      }).sort({ createdAt: -1 });
+
+      await BlockchainTransaction.create({
+        transactionType: 'blood_unit_update',
+        entityType: 'BloodUnit',
+        entityId: bloodUnit._id,
+        transactionHash: blockchainResult.transactionHash,
+        blockNumber: blockchainResult.blockNumber,
+        status: 'confirmed',
+        data: {
+          bloodGroup: bloodUnit.bloodGroup,
+          quantity: bloodUnit.quantity,
+          status,
+          hospitalId: bloodUnit.hospital.toString()
+        },
+        dataHash: blockchainService.generateHash({
+          bloodUnitId: bloodUnit._id.toString(),
+          bloodGroup: bloodUnit.bloodGroup,
+          quantity: bloodUnit.quantity,
+          status
+        }),
+        previousHash: previousTx?.dataHash || null,
+        hospital: bloodUnit.hospital,
+        performedBy: req.user._id
+      });
+    }
+
     // Emit socket event
     const io = req.app.get('io');
     if (io) {
@@ -220,7 +300,8 @@ router.put('/:id', protect, authorize('staff', 'admin'), checkApproval, async (r
     res.json({
       success: true,
       message: 'Blood unit updated successfully',
-      data: bloodUnit
+      data: bloodUnit,
+      blockchain: blockchainResult
     });
   } catch (error) {
     res.status(500).json({
@@ -234,7 +315,7 @@ router.put('/:id', protect, authorize('staff', 'admin'), checkApproval, async (r
 // @route   GET /api/blood/requests
 // @desc    Get blood requests
 // @access  Private
-router.get('/requests', protect, async (req, res) => {
+router.get('/requests', protect, checkApproval, async (req, res) => {
   try {
     const { status, bloodGroup, requestType } = req.query;
     let query = {};
@@ -465,7 +546,7 @@ router.put('/requests/:id/process', protect, authorize('staff', 'admin'), checkA
 // @route   PUT /api/blood/requests/:id
 // @desc    Update blood request status (simple update)
 // @access  Staff/Admin
-router.put('/requests/:id', protect, authorize('staff', 'admin'), async (req, res) => {
+router.put('/requests/:id', protect, authorize('staff', 'admin'), checkApproval, async (req, res) => {
   try {
     const { status, notes } = req.body;
 
@@ -525,9 +606,9 @@ router.put('/requests/:id', protect, authorize('staff', 'admin'), async (req, re
 // @route   GET /api/blood/low-stock
 // @desc    Get low stock alerts
 // @access  Staff/Admin
-router.get('/low-stock', protect, authorize('staff', 'admin'), async (req, res) => {
+router.get('/low-stock', protect, authorize('staff', 'admin'), checkApproval, async (req, res) => {
   try {
-    const threshold = parseInt(req.query.threshold) || 5;
+    const threshold = Number.parseInt(req.query.threshold, 10) || 5;
     const alerts = await BloodUnit.getLowStockAlerts(threshold);
 
     res.json({
@@ -546,7 +627,7 @@ router.get('/low-stock', protect, authorize('staff', 'admin'), async (req, res) 
 // @route   GET /api/blood/:id/history
 // @desc    Get blood unit history
 // @access  Staff/Admin
-router.get('/:id/history', protect, authorize('staff', 'admin'), async (req, res) => {
+router.get('/:id/history', protect, authorize('staff', 'admin'), checkApproval, async (req, res) => {
   try {
     const bloodUnit = await BloodUnit.findById(req.params.id)
       .populate('history.performedBy', 'name');
