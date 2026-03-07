@@ -86,10 +86,11 @@ const BloodManagement = () => {
       if (!map[hId]) {
         map[hId] = { totalUnits: 0, available: 0, reserved: 0, used: 0, expired: 0, groups: {} };
       }
-      map[hId].totalUnits++;
-      if (unit.status) map[hId][unit.status] = (map[hId][unit.status] || 0) + 1;
+      const qty = unit.quantity || 1;
+      map[hId].totalUnits += qty;
+      if (unit.status) map[hId][unit.status] = (map[hId][unit.status] || 0) + qty;
       if (unit.bloodGroup) {
-        map[hId].groups[unit.bloodGroup] = (map[hId].groups[unit.bloodGroup] || 0) + 1;
+        map[hId].groups[unit.bloodGroup] = (map[hId].groups[unit.bloodGroup] || 0) + qty;
       }
     });
     return map;
@@ -256,7 +257,7 @@ const BloodManagement = () => {
           <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
             {bloodGroups.map(group => {
               const count = selectedHospitalStats.groups?.[group] || 0;
-              const isLow = count > 0 && count < 5;
+              const isLow = count > 0 && count < 10;
               const isEmpty = count === 0;
               return (
                 <div
@@ -530,7 +531,7 @@ const BloodManagement = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredHospitals.map(hospital => {
             const hStats = hospitalBloodMap[hospital._id] || { totalUnits: 0, available: 0, groups: {} };
-            const hasLowStock = Object.values(hStats.groups).some(c => c > 0 && c < 5);
+            const hasLowStock = Object.values(hStats.groups).some(c => c > 0 && c < 10);
             const activeGroups = Object.keys(hStats.groups).filter(g => hStats.groups[g] > 0);
 
             return (
@@ -585,14 +586,6 @@ const BloodManagement = () => {
                     <span className="text-xs text-gray-300 italic">No blood units</span>
                   )}
                 </div>
-
-                {/* Low Stock Warning */}
-                {hasLowStock && (
-                  <div className="mt-3 flex items-center space-x-1.5 text-amber-600">
-                    <FiAlertTriangle size={13} />
-                    <span className="text-xs font-medium">Low stock on some groups</span>
-                  </div>
-                )}
               </div>
             );
           })}
