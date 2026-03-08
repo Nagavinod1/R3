@@ -467,10 +467,19 @@ router.put('/hospitals/:id/approve', async (req, res) => {
 router.get('/alerts', async (req, res) => {
   try {
     const { status, severity, type } = req.query;
+    const normalizedStatus = typeof status === 'string' ? status.toLowerCase() : undefined;
     
     // Fetch EmergencyAlerts
     let alertQuery = {};
-    if (status && status !== 'all') alertQuery.status = status;
+    if (normalizedStatus && normalizedStatus !== 'all') {
+      if (normalizedStatus === 'active') {
+        alertQuery.status = { $in: ['active', 'acknowledged', 'escalated'] };
+      } else if (normalizedStatus === 'assigned') {
+        alertQuery.status = 'acknowledged';
+      } else {
+        alertQuery.status = normalizedStatus;
+      }
+    }
     if (severity && severity !== 'all') alertQuery.severity = severity;
 
     const emergencyAlerts = await EmergencyAlert.find(alertQuery)
@@ -478,8 +487,21 @@ router.get('/alerts', async (req, res) => {
       .populate('createdBy', 'name phone email')
       .sort({ createdAt: -1 });
 
-    // Fetch pending/active Blood Requests as alerts
-    let bloodRequestQuery = { status: { $in: ['pending', 'approved'] } };
+    // Fetch Blood Requests and map their statuses to the alert status model.
+    let bloodRequestStatuses = ['pending', 'approved', 'fulfilled', 'rejected'];
+    if (normalizedStatus && normalizedStatus !== 'all') {
+      if (normalizedStatus === 'active') {
+        bloodRequestStatuses = ['pending'];
+      } else if (normalizedStatus === 'assigned') {
+        bloodRequestStatuses = ['approved'];
+      } else if (normalizedStatus === 'resolved') {
+        bloodRequestStatuses = ['fulfilled', 'rejected'];
+      } else if (['pending', 'approved', 'fulfilled', 'rejected'].includes(normalizedStatus)) {
+        bloodRequestStatuses = [normalizedStatus];
+      }
+    }
+
+    let bloodRequestQuery = { status: { $in: bloodRequestStatuses } };
     
     const bloodRequests = await BloodRequest.find(bloodRequestQuery)
       .populate('requestedBy', 'name phone email')
@@ -492,7 +514,12 @@ router.get('/alerts', async (req, res) => {
       _id: req._id,
       type: 'blood',
       priority: req.priority === 1 ? 'critical' : req.priority === 2 ? 'high' : 'medium',
-      status: req.status === 'pending' ? 'active' : req.status,
+      status:
+        req.status === 'pending'
+          ? 'active'
+          : req.status === 'approved'
+            ? 'assigned'
+            : 'resolved',
       bloodGroup: req.bloodGroup,
       unitsRequired: req.unitsRequired,
       hospital: req.targetHospital || req.hospital || { name: 'Patient Request' },
@@ -539,7 +566,7 @@ router.get('/alerts', async (req, res) => {
     // Sort by priority (critical first) then by date
     allAlerts.sort((a, b) => {
       const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-      const priorityDiff = (priorityOrder[a.priority] || 3) - (priorityOrder[b.priority] || 3);
+      const priorityDiff = (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3);
       if (priorityDiff !== 0) return priorityDiff;
       return new Date(b.createdAt) - new Date(a.createdAt);
     });
@@ -564,10 +591,13 @@ router.get('/alerts', async (req, res) => {
 router.put('/alerts/:id/resolve', async (req, res) => {
   try {
     const { isBloodRequest } = req.body;
+    const requestedAsBloodRequest =
+      isBloodRequest === true || isBloodRequest === 'true' || isBloodRequest === 1 || isBloodRequest === '1';
     
     let result;
+    let resolvedAsBloodRequest = requestedAsBloodRequest;
     
-    if (isBloodRequest) {
+    if (requestedAsBloodRequest) {
       // Handle blood request resolution
       result = await BloodRequest.findByIdAndUpdate(
         req.params.id,
@@ -598,22 +628,38 @@ router.put('/alerts/:id/resolve', async (req, res) => {
       );
 
       if (!result) {
-        return res.status(404).json({
-          success: false,
-          message: 'Alert not found'
-        });
+        // Fallback: some clients may not send isBloodRequest for blood alerts.
+        const bloodRequest = await BloodRequest.findByIdAndUpdate(
+          req.params.id,
+          {
+            status: 'fulfilled',
+            processedBy: req.user._id,
+            processedAt: new Date()
+          },
+          { new: true }
+        );
+
+        if (!bloodRequest) {
+          return res.status(404).json({
+            success: false,
+            message: 'Alert not found'
+          });
+        }
+
+        result = bloodRequest;
+        resolvedAsBloodRequest = true;
       }
     }
 
     // Emit socket event
     const io = req.app.get('io');
     if (io) {
-      io.emit('alertResolved', { alertId: req.params.id, isBloodRequest });
+      io.emit('alertResolved', { alertId: req.params.id, isBloodRequest: resolvedAsBloodRequest });
     }
 
     res.json({
       success: true,
-      message: isBloodRequest ? 'Blood request fulfilled' : 'Alert resolved successfully',
+      message: resolvedAsBloodRequest ? 'Blood request fulfilled' : 'Alert resolved successfully',
       data: result
     });
   } catch (error) {

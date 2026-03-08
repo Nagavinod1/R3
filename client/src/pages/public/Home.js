@@ -250,11 +250,6 @@ const Home = () => {
                   </div>
                 </div>
 
-                {/* Floating Badge */}
-                <div className="absolute -bottom-4 -right-4 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl p-4 shadow-xl">
-                  <p className="text-3xl font-bold">98%</p>
-                  <p className="text-xs">Satisfaction</p>
-                </div>
               </div>
             </div>
           </div>

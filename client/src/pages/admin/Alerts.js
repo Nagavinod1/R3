@@ -18,13 +18,33 @@ const Alerts = () => {
     fetchAlerts();
     
     if (socket) {
-      socket.on('emergencyAlert', (newAlert) => {
+      const handleEmergencyAlert = (data) => {
+        const normalizedType =
+          data?.type === 'blood_shortage' || data?.type === 'blood_emergency'
+            ? 'blood'
+            : data?.type === 'bed_shortage'
+              ? 'bed'
+              : (data?.type || 'other');
+
+        const normalizedAlert = {
+          _id: data?.alertId || data?._id || `${Date.now()}`,
+          type: normalizedType,
+          priority: data?.priority || data?.severity || 'high',
+          status: data?.status || 'active',
+          bloodGroup: data?.bloodGroup || '',
+          hospital: data?.hospital || { name: data?.hospitalName || 'System Alert' },
+          user: data?.user || { name: 'System', phone: '' },
+          description: data?.description || data?.message || data?.title || 'Emergency alert received',
+          createdAt: data?.createdAt || data?.timestamp || new Date().toISOString(),
+          isBloodRequest: Boolean(data?.isBloodRequest)
+        };
+
         toast.error('New Emergency Alert!');
-        setAlerts(prev => [newAlert, ...prev]);
-      });
+        setAlerts((prev) => [normalizedAlert, ...prev]);
+      };
 
       // Listen for new blood requests from patients
-      socket.on('newBloodRequest', (data) => {
+      const handleNewBloodRequest = (data) => {
         const priorityMap = { 1: 'critical', 2: 'high', 3: 'medium', 4: 'low' };
         const newAlert = {
           _id: data.requestId || Date.now().toString(),
@@ -39,7 +59,8 @@ const Alerts = () => {
             phone: data.requestedBy?.phone || ''
           },
           description: `${data.unitsRequired} units of ${data.bloodGroup} blood requested${data.patientName ? ` for ${data.patientName}` : ''}. Reason: ${data.reason || 'Not specified'}`,
-          createdAt: new Date(data.timestamp) || new Date()
+          createdAt: data.timestamp || new Date().toISOString(),
+          isBloodRequest: true
         };
         
         setAlerts(prev => [newAlert, ...prev]);
@@ -49,17 +70,38 @@ const Alerts = () => {
         } else {
           toast.success(`🩸 New Blood Request: ${data.unitsRequired} units of ${data.bloodGroup}`, { duration: 5000 });
         }
-      });
+      };
+
+      const handleAlertResolved = ({ alertId }) => {
+        if (!alertId) return;
+        setAlerts((prev) =>
+          prev.map((a) =>
+            String(a._id) === String(alertId)
+              ? { ...a, status: 'resolved', resolvedAt: new Date().toISOString() }
+              : a
+          )
+        );
+      };
+
+      // Support both event names used across server routes/socket handler.
+      socket.on('newEmergencyAlert', handleEmergencyAlert);
+      socket.on('emergencyAlert', handleEmergencyAlert);
+      socket.on('newBloodRequest', handleNewBloodRequest);
+      socket.on('alertResolved', handleAlertResolved);
 
       // Listen for blood request general alerts
-      socket.on('bloodRequestAlert', (data) => {
+      const handleBloodRequestAlert = (data) => {
         console.log('Blood request alert:', data);
-      });
+      };
+
+      socket.on('bloodRequestAlert', handleBloodRequestAlert);
       
       return () => {
-        socket.off('emergencyAlert');
-        socket.off('newBloodRequest');
-        socket.off('bloodRequestAlert');
+        socket.off('newEmergencyAlert', handleEmergencyAlert);
+        socket.off('emergencyAlert', handleEmergencyAlert);
+        socket.off('newBloodRequest', handleNewBloodRequest);
+        socket.off('alertResolved', handleAlertResolved);
+        socket.off('bloodRequestAlert', handleBloodRequestAlert);
       };
     }
   }, [socket]);
@@ -125,11 +167,8 @@ const Alerts = () => {
         a._id === alertId ? { ...a, status: 'resolved', resolvedAt: new Date() } : a
       ));
     } catch (error) {
-      // Update locally for demo
-      setAlerts(prev => prev.map(a => 
-        a._id === alertId ? { ...a, status: 'resolved', resolvedAt: new Date() } : a
-      ));
-      toast.success(isBloodRequest ? 'Blood request fulfilled!' : 'Alert resolved');
+      console.error('Error resolving alert:', error);
+      toast.error(error.response?.data?.message || 'Failed to resolve alert');
     }
   };
 
@@ -314,7 +353,7 @@ const Alerts = () => {
                 </div>
 
                 <div className="flex items-center space-x-3">
-                  {(alert.status === 'active' || alert.status === 'pending') && (
+                  {(alert.status === 'active' || alert.status === 'pending' || alert.status === 'assigned') && (
                     <button
                       onClick={() => handleResolveAlert(alert._id, alert.isBloodRequest)}
                       className="btn-primary flex items-center space-x-2"
