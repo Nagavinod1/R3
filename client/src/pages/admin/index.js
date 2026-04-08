@@ -6,4 +6,3 @@ export { default as Alerts } from './Alerts';
 export { default as BedManagement } from './BedManagement';
 export { default as BedBookingManagement } from './BedBookingManagement';
 export { default as BloodManagement } from './BloodManagement';
-export { default as BlockchainVerification } from './BlockchainVerification';

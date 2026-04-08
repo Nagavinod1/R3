@@ -298,10 +298,11 @@ const NotificationDropdown = () => {
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+        aria-label="Notifications"
       >
         <FiBell size={20} />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-medium animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -309,65 +310,105 @@ const NotificationDropdown = () => {
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
+        <div className="fixed md:absolute right-4 md:right-0 top-16 md:top-auto md:mt-2 w-[calc(100vw-2rem)] md:w-96 bg-white rounded-xl shadow-2xl border border-gray-200 z-[9999] overflow-hidden max-h-[calc(100vh-100px)]">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
+          <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-primary-50 to-blue-50 border-b sticky top-0 z-10">
+            <h3 className="font-semibold text-gray-800 flex items-center space-x-2">
+              <FiBell className="text-primary-600" />
+              <span>Notifications</span>
+              {unreadCount > 0 && (
+                <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                  {unreadCount}
+                </span>
+              )}
+            </h3>
             <h3 className="font-semibold text-gray-800">Notifications</h3>
+            <h3 className="font-semibold text-gray-800 flex items-center space-x-2">
+              <FiBell className="text-primary-600" />
+              <span>Notifications</span>
+              {unreadCount > 0 && (
+                <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                  {unreadCount}
+                </span>
+              )}
+            </h3>
             <div className="flex items-center space-x-2">
               {unreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}
-                  className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                  className="text-xs text-primary-600 hover:text-primary-700 font-medium px-2 py-1 hover:bg-white rounded transition-colors"
                 >
                   Mark all read
                 </button>
               )}
               <button
                 onClick={() => setIsOpen(false)}
-                className="p-1 hover:bg-gray-200 rounded"
+                className="p-1 hover:bg-white rounded transition-colors"
+                aria-label="Close notifications"
               >
-                <FiX size={16} />
+                <FiX size={18} />
               </button>
             </div>
           </div>
 
           {/* Notifications List */}
-          <div className="max-h-96 overflow-y-auto">
+          <div className="max-h-[calc(100vh-200px)] md:max-h-96 overflow-y-auto">
             {loading && (
               <div className="flex items-center justify-center py-8">
                 <div className="spinner w-6 h-6"></div>
               </div>
             )}
             {!loading && notifications.length > 0 && (
-              notifications.slice(0, 10).map((notification) => (
-                <button
-                  type="button"
-                  key={notification._id}
-                  onClick={() => handleNotificationClick(notification)}
-                  className={`flex items-start space-x-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition-colors w-full text-left ${
-                    notification.read ? '' : 'bg-blue-50/50'
-                  }`}
-                >
-                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
-                    {getNotificationIcon(notification.type)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className={`text-sm font-medium ${notification.read ? 'text-gray-700' : 'text-gray-900'}`}>
-                        {notification.title}
-                      </p>
-                      {!notification.read && (
-                        <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>
-                      )}
+              notifications.slice(0, 10).map((notification) => {
+                const isBloodAlert = notification.type === 'blood';
+                const isBedAlert = notification.type === 'bed';
+                const isEmergency = notification.type === 'emergency' || notification.severity === 'critical';
+                
+                return (
+                  <button
+                    type="button"
+                    key={notification._id}
+                    onClick={() => handleNotificationClick(notification)}
+                    className={`flex items-start space-x-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition-all w-full text-left ${
+                      notification.read ? '' : 'bg-blue-50/50 border-l-4 border-l-blue-500'
+                    } ${
+                      isEmergency ? 'bg-red-50/50 border-l-4 border-l-red-500' : ''
+                    } ${
+                      isBloodAlert && !notification.read ? 'bg-red-50/30' : ''
+                    } ${
+                      isBedAlert && !notification.read ? 'bg-blue-50/30' : ''
+                    }`}
+                  >
+                    <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+                      isEmergency ? 'bg-red-100' : isBloodAlert ? 'bg-red-100' : isBedAlert ? 'bg-blue-100' : 'bg-gray-100'
+                    }`}>
+                      {getNotificationIcon(notification.type)}
                     </div>
-                    <p className="text-sm text-gray-500 truncate">{notification.message}</p>
-                    <div className="flex items-center space-x-2 mt-1">
-                      <FiClock size={12} className="text-gray-400" />
-                      <span className="text-xs text-gray-400">{getTimeAgo(notification.createdAt)}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className={`text-sm font-semibold ${
+                          notification.read ? 'text-gray-700' : 'text-gray-900'
+                        } ${
+                          isEmergency ? 'text-red-700' : ''
+                        }`}>
+                          {notification.title}
+                        </p>
+                        {!notification.read && (
+                          <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-1.5"></span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600 mt-0.5 line-clamp-2">{notification.message}</p>
+                      <div className="flex items-center space-x-2 mt-1.5">
+                        <FiClock size={12} className="text-gray-400" />
+                        <span className="text-xs text-gray-500">{getTimeAgo(notification.createdAt)}</span>
+                        {isEmergency && (
+                          <span className="text-xs font-semibold text-red-600 ml-2">🚨 URGENT</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))
+                  </button>
+                );
+              })
             )}
             {!loading && notifications.length === 0 && (
               <div className="flex flex-col items-center justify-center py-8 text-gray-500">

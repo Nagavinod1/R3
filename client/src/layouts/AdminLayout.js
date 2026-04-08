@@ -5,7 +5,7 @@ import { useSocket } from '../context/SocketContext';
 import FloatingAIAssistant from '../components/FloatingAIAssistant';
 import NotificationDropdown from '../components/NotificationDropdown';
 import {
-  FiHome, FiUsers, FiUserCheck, FiActivity, FiGrid, FiDroplet, FiCheckSquare, FiShield,
+  FiHome, FiUsers, FiUserCheck, FiActivity, FiGrid, FiDroplet, FiCheckSquare,
   FiAlertTriangle, FiLogOut, FiMenu, FiX,
   FiUser
 } from 'react-icons/fi';
@@ -30,7 +30,6 @@ const AdminLayout = () => {
     { path: '/admin/bed-bookings', icon: FiCheckSquare, label: 'Bed Bookings' },
     { path: '/admin/beds', icon: FiGrid, label: 'Bed Management' },
     { path: '/admin/blood', icon: FiDroplet, label: 'Blood Management' },
-    { path: '/admin/blockchain', icon: FiShield, label: 'Blockchain' },
   ];
 
   return (

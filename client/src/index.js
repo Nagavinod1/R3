@@ -15,21 +15,31 @@ root.render(
         <SocketProvider>
           <App />
           <Toaster
-            position="top-right"
+            position="top-center"
             toastOptions={{
               duration: 4000,
               style: {
                 background: '#363636',
                 color: '#fff',
+                marginTop: '60px',
+                zIndex: 9999,
               },
               success: {
                 style: {
                   background: '#22c55e',
                 },
+                iconTheme: {
+                  primary: '#fff',
+                  secondary: '#22c55e',
+                },
               },
               error: {
                 style: {
                   background: '#ef4444',
+                },
+                iconTheme: {
+                  primary: '#fff',
+                  secondary: '#ef4444',
                 },
               },
             }}
