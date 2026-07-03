@@ -236,6 +236,7 @@ def get_intelligent_fallback(message):
 def get_fallback_response(_message):
     """Basic fallback response when Gemini is unavailable"""
     return f"""I apologize, but I'm having trouble connecting to my AI services right now.
+    //k
 
 For immediate help:
 🚨 **Emergency Numbers:**
